@@ -220,14 +220,14 @@ df_lazy_conditions = df.lazy().with_columns(
         return_dtype=pl.List(pl.Utf8)
     ).alias('new_condition')
 ).with_columns(
-    pl.col('new_condition').list.get(0).alias('condition_label'),
-    pl.col('new_condition').list.get(1).alias('condition_description')
+    pl.col('new_condition').list.get(0).alias('condition_label_clean'),
+    pl.col('new_condition').list.get(1).alias('condition_description_clean')
 ).drop('new_condition')
 
 LazyFrame.show_graph(df_lazy_conditions)
 
 
-# In[79]:
+# In[12]:
 
 
 # Selecting all unique values for condition, and their newly created condition labels and condition descriptions
@@ -237,29 +237,68 @@ df_lazy_conditions.unique(
     by='condition',
     descending=False,
 ).select(
-    ['condition', 'condition_label', 'condition_description']
-)
+    ['condition', 'condition_label_clean', 'condition_description_clean']
+).collect().to_pandas()
 
 
-# In[87]:
+# In[13]:
 
 
-# Reformatting `condition_label` and `condition_description`: replacing blank spaces for underscores and lowercasing
+# Reformatting `condition_label_clean` and `condition_description_clean`: replacing blank spaces for underscores and lowercasing
 df = df_lazy_conditions.with_columns(
-    pl.col('condition_label')
+    pl.col('condition_label_clean')
     .str.to_lowercase()
     .str.replace_all(' - ', '_')
     .str.replace_all(' ', '_')
-    .alias('condition_label')
+    .alias('condition_label_clean')
 ).collect()
 
-# Selecting all unique values for condition, and their respective reformatted condition labels
+# Selecting all unique values for condition, and their respective reformatted condition labels (condition description is left as is)
 df.unique(
     subset='condition'
 ).sort(
     by='condition',
     descending=False,
 ).select(
-    ['condition', 'condition_label']
+    ['condition', 'condition_label_clean']
+)
+
+
+# ## Transforming the `processor` variable
+
+# In[14]:
+
+
+processor_replace_map = {
+    '?':'unknown',
+    'none':'unknown',
+    'no':'unknown',
+    '^?':'unknown',
+    'does not apply':'not_applicable'
+}
+
+df = df.with_columns(
+    pl.col('processor')
+    .str.to_lowercase()
+    .replace(processor_replace_map)
+    .alias('processor_clean')
+)
+
+df.head(n=10)
+
+
+# In[15]:
+
+
+# Taking a look at unique `processor` with their respective `processor_clean` variables
+df.select([
+    'processor', 'processor_clean',
+]).filter(
+    pl.col('processor').str.to_lowercase().is_in(processor_replace_map)
+).unique(
+    subset='processor'
+).sort(
+    by='processor',
+    descending=False,
 )
 
