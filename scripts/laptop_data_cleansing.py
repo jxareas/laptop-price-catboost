@@ -17,7 +17,7 @@
 
 # Importing libraries and setting constants
 import polars as pl
-from IPython.core.display import display_svg
+import re
 from polars import LazyFrame
 
 RANDOM_SEED = 287
@@ -78,7 +78,7 @@ df.null_count().unpivot(
 ).sort(
     by='null_count', descending=True,
 ).with_columns(
-    (pl.col('null_count') / len(df)).round(decimals=2).alias('null_proportion'),
+    (pl.col('null_count') / df.height).round(2).alias('null_proportion'),
 )
 
 
@@ -135,7 +135,7 @@ df.select([
 # Taking a look at the values counts for the `condition` column
 
 df['condition'].value_counts().with_columns(
-    (pl.col('count') / len(df)).round(2).alias('proportion')
+    (pl.col('count') / df.height).round(2).alias('proportion')
 ).sort(by='count', descending=True)
 
 
@@ -270,11 +270,11 @@ df.unique(
 
 
 processor_replace_map = {
-    '?':'unknown',
-    'none':'unknown',
-    'no':'unknown',
-    '^?':'unknown',
-    'does not apply':'not_applicable'
+    '?': 'unknown',
+    'none': 'unknown',
+    'no': 'unknown',
+    '^?': 'unknown',
+    'does not apply': 'not_applicable'
 }
 
 df = df.with_columns(
@@ -301,4 +301,108 @@ df.select([
     by='processor',
     descending=False,
 )
+
+
+# # Transforming the `color` variable
+# 
+# - `color` is currently a variable with a high number of nulls (approx. 68%)
+# - `color` contains data in spanish, as evidenced by its values `borgoña` (burgundy), `blanco` (white) or `negro` (black)
+
+# In[16]:
+
+
+# Color value counts and their proportion`
+df['color'].value_counts().sort(
+    by='count',
+    descending=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
+
+
+# In[17]:
+
+
+valid_colors = ['beige', 'black', 'blue', 'bronze', 'brown', 'burgundy', 'gold', 'gray', 'green', 'grey', 'orange',
+                'pink', 'multicolor', 'platinum', 'purple', 'red', 'silver', 'teal', 'white', 'yellow']
+
+color_replace_map = {
+    'negro': 'black',
+    'borgoña': 'burgundy',
+    'platino': 'platinum',
+    'gris': 'grey',
+    'multi': 'multicolor',
+    'multi-color': 'multicolor',
+    'blk': 'black',
+    'blanco': 'white',
+    'plata transparente': 'transparent silver'
+}
+
+color_replace_map
+
+
+# In[18]:
+
+
+def clean_color(color: str, color_list: list = valid_colors) -> str:
+    """
+    Cleans the input color string by categorizing it based on the presence of valid colors.
+
+    The function checks if the input `color` matches any of the colors in the `color_list`.
+    It returns a category based on the number of matches:
+    - If the input color is already 'multicolor', it returns 'multicolor'.
+    - If the color matches more than one valid color, it returns 'multicolor'.
+    - If the color matches exactly one valid color, it returns that color.
+    - If no valid colors are found, it returns 'other'.
+
+    Args:
+        color (str): The input color string to be cleaned and categorized.
+        color_list (list, optional): A list of valid colors to check against. Defaults to `valid_colors`.
+
+    Returns:
+        str: The cleaned and categorized color, either a valid color, 'multicolor', or 'other'.
+    """
+    if color == 'multicolor':
+        return color
+
+    color_count = sum(1 for c in color_list if c in color.lower())
+
+    if color_count > 1:
+        return 'multicolor'
+    elif color_count == 1:
+        return next((c for c in valid_colors if c in color.lower()), 'other')
+    else:
+        return 'other'
+
+
+# In[19]:
+
+
+# Creates an expression to search for valid colors
+valid_color_string_pattern = "|".join(re.escape(color) for color in valid_colors)
+
+color_reformatted = pl.col('color') \
+    .str.to_lowercase() \
+    .replace(color_replace_map)
+
+df = df.with_columns(
+    pl.when(color_reformatted.str.contains(valid_color_string_pattern))
+    .then(color_reformatted.map_elements(clean_color, return_dtype=pl.Utf8))
+    .otherwise(pl.lit('other'))
+    .alias('color_clean')
+)
+
+df
+
+
+# In[20]:
+
+
+df.select([
+    'color', 'color_clean'
+]).unique(
+    subset='color'
+).sort(
+    by='color'
+).transpose(include_header=True, header_name='column_name')
 
