@@ -106,7 +106,7 @@ df['price'].head(n=5)
 
 
 df = df.with_columns(
-    pl.col('price').str.slice(0, 1).alias('currency'),
+    pl.col('price').str.slice(0, 1).alias('currency_clean'),
     # Removing the currency symbol, commas from the price and trimming whitespace
     pl.col('price')
     .str.slice(1)  # Removing the currency symbol
@@ -115,11 +115,11 @@ df = df.with_columns(
     .list.first()  # Obtaining the min_price, the first element of the list
     .str.strip_chars()  # Remove leading and trailing characters
     .cast(pl.Float64)  # Casting the min_price to float
-    .alias('min_price')
+    .alias('min_price_clean')
 )
 
 df.select([
-    'price', 'currency', 'min_price'
+    'price', 'currency_clean', 'min_price_clean'
 ]).head(n=5)
 
 
@@ -323,8 +323,8 @@ df['color'].value_counts().sort(
 # In[17]:
 
 
-valid_colors = ['beige', 'black', 'blue', 'bronze', 'brown', 'burgundy', 'gold', 'gray', 'green', 'grey', 'orange',
-                'pink', 'multicolor', 'platinum', 'purple', 'red', 'silver', 'teal', 'white', 'yellow']
+valid_color_values = ['beige', 'black', 'blue', 'bronze', 'brown', 'burgundy', 'gold', 'gray', 'green', 'grey', 'orange',
+                'pink', 'platinum', 'purple', 'red', 'silver', 'teal', 'white', 'yellow']
 
 color_replace_map = {
     'negro': 'black',
@@ -344,33 +344,29 @@ color_replace_map
 # In[18]:
 
 
-def clean_color(color: str, color_list: list = valid_colors) -> str:
+def clean_color(color: str, color_list: list = valid_color_values) -> str:
     """
     Cleans the input color string by categorizing it based on the presence of valid colors.
 
     The function checks if the input `color` matches any of the colors in the `color_list`.
     It returns a category based on the number of matches:
-    - If the input color is already 'multicolor', it returns 'multicolor'.
     - If the color matches more than one valid color, it returns 'multicolor'.
-    - If the color matches exactly one valid color, it returns that color.
+    - If the color matches exactly one valid color, it returns that color (e.g: 'red').
     - If no valid colors are found, it returns 'other'.
 
     Args:
         color (str): The input color string to be cleaned and categorized.
-        color_list (list, optional): A list of valid colors to check against. Defaults to `valid_colors`.
+        color_list (list, optional): A list of valid colors to check against. Defaults to `valid_color_values`.
 
     Returns:
         str: The cleaned and categorized color, either a valid color, 'multicolor', or 'other'.
     """
-    if color == 'multicolor':
-        return color
-
     color_count = sum(1 for c in color_list if c in color.lower())
 
     if color_count > 1:
         return 'multicolor'
     elif color_count == 1:
-        return next((c for c in valid_colors if c in color.lower()), 'other')
+        return next((c for c in valid_color_values if c in color.lower()), 'other')
     else:
         return 'other'
 
@@ -379,24 +375,32 @@ def clean_color(color: str, color_list: list = valid_colors) -> str:
 
 
 # Creates an expression to search for valid colors
-valid_color_string_pattern = "|".join(re.escape(color) for color in valid_colors)
+valid_color_string_pattern = "|".join(re.escape(color) for color in valid_color_values)
 
 color_reformatted = pl.col('color') \
     .str.to_lowercase() \
     .replace(color_replace_map)
 
 df = df.with_columns(
-    pl.when(color_reformatted.str.contains(valid_color_string_pattern))
-    .then(color_reformatted.map_elements(clean_color, return_dtype=pl.Utf8))
-    .otherwise(pl.lit('other'))
-    .alias('color_clean')
+    pl.coalesce(
+        # If color is valid then apply the `clean_color` function, and map its value to a valid color, multicolor or other (rare label, for invalid color categories)
+        pl.when(color_reformatted.str.contains(valid_color_string_pattern))
+        .then(color_reformatted.map_elements(clean_color, return_dtype=pl.Utf8)),
+        # If color value is set to multicolor, then return multicolor
+        pl.when(color_reformatted.eq('multicolor'))
+        .then(pl.lit('multicolor'))
+        # If value is not multicolor nor a single color,then assign it to `other`
+        .otherwise(pl.lit('other'))
+    ).alias('color_clean')
 )
 
 df
 
 
-# In[20]:
+# In[21]:
 
+
+# Taking a look at the newly transformed color cleansed labels
 
 df.select([
     'color', 'color_clean'
