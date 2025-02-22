@@ -12,7 +12,7 @@
 # <img src="../assets/logos/ebay.png" width="250"/>
 # </div>
 
-# In[1]:
+# In[97]:
 
 
 # Importing libraries and setting constants
@@ -20,10 +20,8 @@ import polars as pl
 import re
 from polars import LazyFrame
 
-RANDOM_SEED = 287
 
-
-# In[2]:
+# In[98]:
 
 
 # Loading the dataset
@@ -39,14 +37,14 @@ df.head(n=10)
 # * **Several** columns are being treated as `String` (such as `Price`), which might not be adequate.
 # * **Several** columns have **missing values**, which needs to be treated during further data preprocessing.
 
-# In[3]:
+# In[99]:
 
 
 # Summary statistics
 df.describe()
 
 
-# In[4]:
+# In[100]:
 
 
 # Data Types
@@ -60,7 +58,7 @@ pl.DataFrame(data={
 
 # ## Data Preparation
 
-# In[5]:
+# In[101]:
 
 
 # Renaming columns: replacing blank spaces for underscores and lowercasing columns
@@ -68,7 +66,7 @@ df = df.rename({col: col.lower().replace(' ', '_') for col in df.columns})
 print(df.columns)
 
 
-# In[6]:
+# In[102]:
 
 
 # Nulls per each column in the dataset
@@ -87,13 +85,87 @@ df.null_count().unpivot(
 # - Extremely high percentage of nulls for columns such as `country_region_of_manufacturer`, `ratings_count` or `release_year`.
 # - `Price` column has no null values.
 
+# ## Transforming the `brand` variable
+# - TODO: Write `brand` variable exploratory analysis
+
+# In[103]:
+
+
+df['brand'].value_counts().with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+).sort(by='count', descending=True)
+
+
+# In[104]:
+
+
+brand_replace_map = {
+    '?': 'unbranded',
+    'does_not_apply': 'not_applicable',
+}
+
+df = df.with_columns(
+    pl.col('brand')
+    .str.to_lowercase()
+    .str.strip_chars()
+    .str.strip_chars_end('.')
+    .str.replace_all(' / |\\/', ' or ')
+    .str.replace_all(' ', '_')
+    .replace(brand_replace_map)
+    .fill_null('unknown')
+    .alias('brand_clean')
+)
+
+
+# In[105]:
+
+
+top_brands = df.filter(pl.col('brand_clean').ne('unknown')) \
+    .group_by('brand_clean') \
+    .agg(pl.len().alias('count')) \
+    .sort('count', descending=True) \
+    .head(5) \
+    .select('brand_clean') \
+    .to_series()
+
+
+is_a_top_brand_string_pattern = "|".join(re.escape(color) for color in top_brands + '_')
+
+def return_actual_brand_from_string(string, brand_list=top_brands):
+    for brand in brand_list:
+        if brand + '_' in string:
+            return brand
+    return string
+
+df = df.with_columns(
+    pl.when(
+        pl.col('brand_clean').str.contains(is_a_top_brand_string_pattern) &
+        ~pl.col('brand_clean').str.contains('_or_')
+    ).then(pl.col('brand_clean').map_elements(return_actual_brand_from_string, return_dtype=pl.Utf8))
+    .otherwise(pl.col('brand_clean'))
+    .alias('brand_clean')
+)
+
+
+# In[106]:
+
+
+df['brand_clean'].value_counts().with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+).sort(by='count', descending=True)
+
+
+# Key Observations:
+# - `dell` has more than 20 new records.
+# - # TODO: Write more key findings
+
 # ## Transforming the `price` variable
 # 
 # - By analyzing the `price` variable, we realize it has information about the currency and price of a laptop.
 # - The cost of a laptop might be fixed (e.g: `880`) or a range (e.g: `from 500 to 999`)
 # - `price` is currently a categorical (`String`) variable, due to commas, whitespaces and symbols. We **must convert** it into **float**.
 
-# In[7]:
+# In[107]:
 
 
 # Taking a look at the `price` variable as is
@@ -102,7 +174,7 @@ df.null_count().unpivot(
 df['price'].head(n=5)
 
 
-# In[8]:
+# In[108]:
 
 
 df = df.with_columns(
@@ -129,7 +201,7 @@ df.select([
 # - **`condition_label`**: A categorical label which represents the condition of a laptop (e.g: `new`, `used`, `certified_refurbished`)
 # - **`condition_description`**: A description for the `condition_label` (e.g: `A brand-new, unused, unopened laptop.`)
 
-# In[9]:
+# In[109]:
 
 
 # Taking a look at the values counts for the `condition` column
@@ -139,7 +211,7 @@ df['condition'].value_counts().with_columns(
 ).sort(by='count', descending=True)
 
 
-# In[10]:
+# In[110]:
 
 
 # Creating a dictionary which represents the `condition` labels and descriptions
@@ -209,7 +281,7 @@ def map_condition(value, condition_dict=condition_replace_map):
     return 'No label', 'No description'
 
 
-# In[11]:
+# In[111]:
 
 
 # Transforming the dataframe, creating the `condition_label` and `condition_description` variables
@@ -227,12 +299,13 @@ df_lazy_conditions = df.lazy().with_columns(
 LazyFrame.show_graph(df_lazy_conditions)
 
 
-# In[12]:
+# In[112]:
 
 
 # Selecting all unique values for condition, and their newly created condition labels and condition descriptions
 df_lazy_conditions.unique(
-    subset='condition'
+    subset='condition',
+    maintain_order=True,
 ).sort(
     by='condition',
     descending=False,
@@ -241,7 +314,7 @@ df_lazy_conditions.unique(
 ).collect().to_pandas()
 
 
-# In[13]:
+# In[113]:
 
 
 # Reformatting `condition_label_clean` and `condition_description_clean`: replacing blank spaces for underscores and lowercasing
@@ -255,7 +328,8 @@ df = df_lazy_conditions.with_columns(
 
 # Selecting all unique values for condition, and their respective reformatted condition labels (condition description is left as is)
 df.unique(
-    subset='condition'
+    subset='condition',
+    maintain_order=True,
 ).sort(
     by='condition',
     descending=False,
@@ -265,8 +339,10 @@ df.unique(
 
 
 # ## Transforming the `processor` variable
+# 
+# - TODO : Write analysis about the processor variable
 
-# In[14]:
+# In[114]:
 
 
 processor_replace_map = {
@@ -284,10 +360,12 @@ df = df.with_columns(
     .alias('processor_clean')
 )
 
-df.head(n=10)
+df.select(
+    'processor', 'processor_clean'
+).head()
 
 
-# In[15]:
+# In[115]:
 
 
 # Taking a look at unique `processor` with their respective `processor_clean` variables
@@ -296,7 +374,8 @@ df.select([
 ]).filter(
     pl.col('processor').str.to_lowercase().is_in(processor_replace_map)
 ).unique(
-    subset='processor'
+    subset='processor',
+    maintain_order=True,
 ).sort(
     by='processor',
     descending=False,
@@ -308,7 +387,7 @@ df.select([
 # - `color` is currently a variable with a high number of nulls (approx. 68%)
 # - `color` contains data in spanish, as evidenced by its values `borgoña` (burgundy), `blanco` (white) or `negro` (black)
 
-# In[16]:
+# In[116]:
 
 
 # Color value counts and their proportion`
@@ -320,28 +399,32 @@ df['color'].value_counts().sort(
 )
 
 
-# In[17]:
+# In[117]:
 
 
-valid_color_values = ['beige', 'black', 'blue', 'bronze', 'brown', 'burgundy', 'gold', 'gray', 'green', 'grey', 'orange',
-                'pink', 'platinum', 'purple', 'red', 'silver', 'teal', 'white', 'yellow']
+valid_color_values = ['beige', 'black', 'blue', 'bronze', 'brown', 'burgundy', 'gold', 'gray', 'green', 'grey',
+                      'orange', 'pink', 'platinum', 'purple', 'red', 'silver', 'teal', 'white', 'yellow']
 
-color_replace_map = {
+colors_translation = {
     'negro': 'black',
     'borgoña': 'burgundy',
     'platino': 'platinum',
     'gris': 'grey',
+    'blanco': 'white',
+    'plata transparente': 'transparent silver',
+}
+
+color_replace_map = {
     'multi': 'multicolor',
     'multi-color': 'multicolor',
     'blk': 'black',
-    'blanco': 'white',
-    'plata transparente': 'transparent silver'
+    **colors_translation,
 }
 
 color_replace_map
 
 
-# In[18]:
+# In[118]:
 
 
 def clean_color(color: str, color_list: list = valid_color_values) -> str:
@@ -371,7 +454,7 @@ def clean_color(color: str, color_list: list = valid_color_values) -> str:
         return 'other'
 
 
-# In[19]:
+# In[119]:
 
 
 # Creates an expression to search for valid colors
@@ -397,16 +480,19 @@ df = df.with_columns(
 df
 
 
-# In[21]:
+# In[120]:
 
 
 # Taking a look at the newly transformed color cleansed labels
-
 df.select([
-    'color', 'color_clean'
+    'color', 'color_clean',
 ]).unique(
-    subset='color'
+    subset='color',
+    maintain_order=True,
 ).sort(
-    by='color'
-).transpose(include_header=True, header_name='column_name')
+    by='color',
+).transpose(
+    include_header=True,
+    header_name='column_name',
+)
 
