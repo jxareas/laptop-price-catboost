@@ -1,2 +1,2 @@
 cd ../
-conda env export --name ml-core | head -n -1 > environment.yml
+conda env export --name ebay-laptops | head -n -1 > environment.yml

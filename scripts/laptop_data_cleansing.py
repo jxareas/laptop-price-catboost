@@ -12,16 +12,16 @@
 # <img src="../assets/logos/ebay.png" width="250"/>
 # </div>
 
-# In[97]:
+# In[1]:
 
 
 # Importing libraries and setting constants
 import polars as pl
-import re
 from polars import LazyFrame
+import re
 
 
-# In[98]:
+# In[2]:
 
 
 # Loading the dataset
@@ -37,14 +37,14 @@ df.head(n=10)
 # * **Several** columns are being treated as `String` (such as `Price`), which might not be adequate.
 # * **Several** columns have **missing values**, which needs to be treated during further data preprocessing.
 
-# In[99]:
+# In[3]:
 
 
 # Summary statistics
 df.describe()
 
 
-# In[100]:
+# In[4]:
 
 
 # Data Types
@@ -58,7 +58,7 @@ pl.DataFrame(data={
 
 # ## Data Preparation
 
-# In[101]:
+# In[5]:
 
 
 # Renaming columns: replacing blank spaces for underscores and lowercasing columns
@@ -66,7 +66,7 @@ df = df.rename({col: col.lower().replace(' ', '_') for col in df.columns})
 print(df.columns)
 
 
-# In[102]:
+# In[6]:
 
 
 # Nulls per each column in the dataset
@@ -88,7 +88,7 @@ df.null_count().unpivot(
 # ## Transforming the `brand` variable
 # - TODO: Write `brand` variable exploratory analysis
 
-# In[103]:
+# In[7]:
 
 
 df['brand'].value_counts().with_columns(
@@ -96,7 +96,7 @@ df['brand'].value_counts().with_columns(
 ).sort(by='count', descending=True)
 
 
-# In[104]:
+# In[8]:
 
 
 brand_replace_map = {
@@ -117,7 +117,7 @@ df = df.with_columns(
 )
 
 
-# In[105]:
+# In[9]:
 
 
 top_brands = df.filter(pl.col('brand_clean').ne('unknown')) \
@@ -147,7 +147,7 @@ df = df.with_columns(
 )
 
 
-# In[106]:
+# In[10]:
 
 
 df['brand_clean'].value_counts().with_columns(
@@ -165,7 +165,7 @@ df['brand_clean'].value_counts().with_columns(
 # - The cost of a laptop might be fixed (e.g: `880`) or a range (e.g: `from 500 to 999`)
 # - `price` is currently a categorical (`String`) variable, due to commas, whitespaces and symbols. We **must convert** it into **float**.
 
-# In[107]:
+# In[11]:
 
 
 # Taking a look at the `price` variable as is
@@ -174,7 +174,7 @@ df['brand_clean'].value_counts().with_columns(
 df['price'].head(n=5)
 
 
-# In[108]:
+# In[12]:
 
 
 df = df.with_columns(
@@ -201,7 +201,7 @@ df.select([
 # - **`condition_label`**: A categorical label which represents the condition of a laptop (e.g: `new`, `used`, `certified_refurbished`)
 # - **`condition_description`**: A description for the `condition_label` (e.g: `A brand-new, unused, unopened laptop.`)
 
-# In[109]:
+# In[13]:
 
 
 # Taking a look at the values counts for the `condition` column
@@ -211,7 +211,7 @@ df['condition'].value_counts().with_columns(
 ).sort(by='count', descending=True)
 
 
-# In[110]:
+# In[14]:
 
 
 # Creating a dictionary which represents the `condition` labels and descriptions
@@ -281,7 +281,7 @@ def map_condition(value, condition_dict=condition_replace_map):
     return 'No label', 'No description'
 
 
-# In[111]:
+# In[15]:
 
 
 # Transforming the dataframe, creating the `condition_label` and `condition_description` variables
@@ -299,7 +299,7 @@ df_lazy_conditions = df.lazy().with_columns(
 LazyFrame.show_graph(df_lazy_conditions)
 
 
-# In[112]:
+# In[16]:
 
 
 # Selecting all unique values for condition, and their newly created condition labels and condition descriptions
@@ -314,7 +314,7 @@ df_lazy_conditions.unique(
 ).collect().to_pandas()
 
 
-# In[113]:
+# In[17]:
 
 
 # Reformatting `condition_label_clean` and `condition_description_clean`: replacing blank spaces for underscores and lowercasing
@@ -342,7 +342,7 @@ df.unique(
 # 
 # - TODO : Write analysis about the processor variable
 
-# In[114]:
+# In[18]:
 
 
 processor_replace_map = {
@@ -365,7 +365,7 @@ df.select(
 ).head()
 
 
-# In[115]:
+# In[19]:
 
 
 # Taking a look at unique `processor` with their respective `processor_clean` variables
@@ -387,7 +387,7 @@ df.select([
 # - `color` is currently a variable with a high number of nulls (approx. 68%)
 # - `color` contains data in spanish, as evidenced by its values `borgoña` (burgundy), `blanco` (white) or `negro` (black)
 
-# In[116]:
+# In[20]:
 
 
 # Color value counts and their proportion`
@@ -399,7 +399,7 @@ df['color'].value_counts().sort(
 )
 
 
-# In[117]:
+# In[21]:
 
 
 valid_color_values = ['beige', 'black', 'blue', 'bronze', 'brown', 'burgundy', 'gold', 'gray', 'green', 'grey',
@@ -424,7 +424,7 @@ color_replace_map = {
 color_replace_map
 
 
-# In[118]:
+# In[22]:
 
 
 def clean_color(color: str, color_list: list = valid_color_values) -> str:
@@ -454,7 +454,7 @@ def clean_color(color: str, color_list: list = valid_color_values) -> str:
         return 'other'
 
 
-# In[119]:
+# In[23]:
 
 
 # Creates an expression to search for valid colors
@@ -480,7 +480,7 @@ df = df.with_columns(
 df
 
 
-# In[120]:
+# In[24]:
 
 
 # Taking a look at the newly transformed color cleansed labels
