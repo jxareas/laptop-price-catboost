@@ -399,7 +399,7 @@ df = df_lazy_conditions.with_columns(
     .str.replace_all(' - ', '_')  # Replacing hyphen and spaces between words with underscores
     .str.replace_all(' ', '_')  # Replacing spaces with underscores
     .alias('condition_label_clean')
-).collect() # Materializing the LazyFrame into a DataFrame
+).collect()  # Materializing the LazyFrame into a DataFrame
 
 # Selecting all unique values for condition, and their respective reformatted condition labels (condition description is not modified)
 df.unique(
@@ -429,47 +429,60 @@ df['condition_label_clean'].value_counts(
 # - **New label frequencies**: After cleansing, the most common conditions are `used` (42%) and `new` (29%), which account for the majority of the dataset.
 
 # ## Transforming the `processor` variable
+# - **Formatting**: Similarly, as done with other variables, we'll reformat the values, so that `Intel Celeron` is transformed into `intel_celeron`.
+# - **Unknown values**: There's an abundance of brands with very low frequencies, or unknown values (like `?` or `Does not apply` or `no` or `none`).
 # 
-# - TODO : Write analysis about the processor variable
 
 # In[20]:
 
 
-# Taking a look at the values counts for the `condition` column
+# Taking a look at the values counts for the `processor` column
 df['processor'].value_counts(
-    sort=True
+    sort=True,
+    parallel=True,
 ).with_columns(
     (pl.col('count') / df.height).round(2).alias('proportion')
 )
 
 
+# Observations:
+# - **Significant amount missing data**: 2% of the entries are marked as `null` and 8% as `Does not apply`, together representing 50% of the dataset.
+# - **Low variety**: All processors in the top 10 are of `Intel` brand, with diversity in performance levels but very little in manufacturer.
+# - **Feature engineering potential**: The processor type indicates both the model and the generation, which can be extracted for further analysis.
+
 # In[21]:
 
 
+# Define a mapping to handle various non-standard or missing values in the 'processor' column.
 processor_replace_map = {
-    '?': 'unknown',
-    'none': 'unknown',
-    'no': 'unknown',
-    '^?': 'unknown',
-    'does not apply': 'not_applicable'
+   '?': 'unknown',
+   'none': 'unknown',
+   'no': 'unknown',
+   '^?': 'unknown',
+   'does not apply': 'not_applicable'
 }
 
+# Apply the replacement logic to the 'processor' column to clean and standardize the values.
 df = df.with_columns(
-    pl.col('processor')
-    .str.to_lowercase()
-    .replace(processor_replace_map)
-    .alias('processor_clean')
+   pl.col('processor')
+   .str.to_lowercase()  # Convert text to lowercase for consistency.
+   .str.strip_chars()  # Remove any leading or trailing whitespace.
+   .str.replace_all(r'\s+|-', '_')  # Replace spaces / hyphens with underscores for consistent naming.
+   .str.replace(',', '')  # Removing comas
+   .str.strip_chars_end('.')  # Remove any trailing dots.
+   .replace(processor_replace_map)  # Apply the replacement map to clean non-standard values.
+   .alias('processor_clean')
 )
 
 df.select(
-    'processor', 'processor_clean'
-).head()
+   'processor', 'processor_clean'
+).head(n=10)
 
 
 # In[22]:
 
 
-# Taking a look at unique `processor` with their respective `processor_clean` variables
+# Taking a look at the badly formatted `processor` values, with their correspondent values in `processor_clean`
 df.select([
     'processor', 'processor_clean',
 ]).filter(
@@ -483,12 +496,24 @@ df.select([
 )
 
 
+# In[23]:
+
+
+# Taking a look the new `processor_clean` column and its value counts
+df['processor_clean'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
+
+
 # # Transforming the `color` variable
 # 
 # - `color` is currently a variable with a high number of nulls (approx. 68%)
 # - `color` contains data in spanish, as evidenced by its values `borgoña` (burgundy), `blanco` (white) or `negro` (black)
 
-# In[23]:
+# In[24]:
 
 
 # Color value counts and their proportion`
@@ -500,12 +525,14 @@ df['color'].value_counts().sort(
 )
 
 
-# In[24]:
+# In[25]:
 
 
+# List of valid color values for consistency checks
 valid_color_values = ['beige', 'black', 'blue', 'bronze', 'brown', 'burgundy', 'gold', 'gray', 'green', 'grey',
                       'orange', 'pink', 'platinum', 'purple', 'red', 'silver', 'teal', 'white', 'yellow']
 
+# Spanish-to-English color translation map
 colors_translation = {
     'negro': 'black',
     'borgoña': 'burgundy',
@@ -515,6 +542,7 @@ colors_translation = {
     'plata transparente': 'transparent silver',
 }
 
+# Color replacement map
 color_replace_map = {
     'multi': 'multicolor',
     'multi-color': 'multicolor',
@@ -525,7 +553,7 @@ color_replace_map = {
 color_replace_map
 
 
-# In[25]:
+# In[26]:
 
 
 def clean_color(color: str, color_list: list = valid_color_values) -> str:
@@ -555,12 +583,13 @@ def clean_color(color: str, color_list: list = valid_color_values) -> str:
         return 'other'
 
 
-# In[26]:
+# In[27]:
 
 
 # Creates an expression to search for valid colors
 valid_color_string_pattern = "|".join(re.escape(color) for color in valid_color_values)
 
+# Prepare the color column by converting to lowercase and applying the color replacements
 color_reformatted = pl.col('color') \
     .str.to_lowercase() \
     .replace(color_replace_map)
@@ -578,13 +607,15 @@ df = df.with_columns(
     ).alias('color_clean')
 )
 
-df
+df.select([
+    'color', 'color_clean'
+]).head(n=10)
 
 
-# In[27]:
+# In[28]:
 
 
-# Taking a look at the newly transformed color cleansed labels
+# Taking a look at all the transformed color labels
 df.select([
     'color', 'color_clean',
 ]).unique(
