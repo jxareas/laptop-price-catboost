@@ -82,44 +82,73 @@ df.null_count().unpivot(
 
 # Observations:
 # 
-# - Extremely high percentage of nulls for columns such as `country_region_of_manufacturer`, `ratings_count` or `release_year`.
+# - Extremely high percentage (85%+) of nulls for columns such as `country_region_of_manufacturer`, `ratings_count` or `release_year`.
 # - `Price` column has no null values.
 
 # ## Transforming the `brand` variable
-# - TODO: Write `brand` variable exploratory analysis
+# - **Top categories**: The top three brands—Dell (19%), Lenovo (11%), and HP (7%)—represent a combined 37% of the total brands in the dataset. The null values account for 39% of the data, with 2596 entries marked as null. This is quite a large portion of the dataset. The top 4 categories (`null`, `Dell`, `Lenovo` & `HP`) account for 76% of the dataset.
+# - **Unknown values**: There's an abundance of brands with very low frequencies, or unknown values (like `?` or `Does not apply`).
+# - **Inconsistent formatting**: Some entries like `Dell Inc` are not captured under the main brand `Dell` due to inconsistent formatting. Similar things occur to other top brands.
+# - **Multibrand categories**: Some entries represent several brands, like `Dell / HP / Lenovo` or `Apple / LG`
 
 # In[7]:
 
 
-df['brand'].value_counts().with_columns(
+# Taking a look at the frequency of each brand: total count and proportion
+df['brand'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
     (pl.col('count') / df.height).round(2).alias('proportion')
-).sort(by='count', descending=True)
+)
 
+
+# ### **Reformatting Brands:**
+# 
+# In this step of our analysis, we're focusing on cleaning up and standardizing the `brand` data to ensure consistency and accuracy. Brands can be listed in many different ways, which can lead to confusion or misinterpretation during analysis. So, we're transforming the brand names into a uniform format that makes it easier to work with.
+# 
+# - **Consistent Formatting:** We ensure all brand names are in lowercase, and we remove any unnecessary spaces or punctuation that could create inconsistencies. (transforming `Dell Inc` into `dell_inc`).
+# - **Replacing Uncertain Values:** We also handle special cases where the data might have uncertain or irrelevant values (e.g., a "?" for unknown brands), replacing them with more meaningful terms like "unbranded" or "unknown."
+# 
 
 # In[8]:
 
 
+# Define a mapping to replace certain placeholder values with more meaningful labels.
 brand_replace_map = {
-    '?': 'unbranded',
-    'does_not_apply': 'not_applicable',
+    '?': 'unbranded',  # Replace '?' with 'unbranded' for unknown brands.
+    'does_not_apply': 'not_applicable',  # Replace 'does_not_apply' with 'not_applicable' to handle irrelevant data.
 }
 
+# Clean and normalize the brand names.
 df = df.with_columns(
     pl.col('brand')
-    .str.to_lowercase()
-    .str.strip_chars()
-    .str.strip_chars_end('.')
-    .str.replace_all(' / |\\/', ' or ')
-    .str.replace_all(' ', '_')
-    .replace(brand_replace_map)
-    .fill_null('unknown')
+    .str.to_lowercase()  # Convert brand names to lowercase to ensure uniformity.
+    .str.strip_chars()  # Remove any leading whitespace or special characters.
+    .str.strip_chars_end('.')  # Specifically remove any trailing dots at the end of brand names.
+    .str.replace_all(' / |\\/', ' or ')  # Replace slashes ("/" or " / ") with ' or ' to standardize multi-brand names.
+    .str.replace_all(' ', '_')  # Replace spaces with underscores to ensure no spaces in brand names.
+    .replace(brand_replace_map)  # Replace values like '?' or 'does_not_apply' based on the predefined map.
+    .fill_null('unknown')  # Fill any missing brand values with 'unknown' to handle missing data.
     .alias('brand_clean')
 )
 
 
+# ### **Identifying and Mapping Top Brands:**
+# 
+# In this step, we're focusing on identifying the most popular brands in the dataset and ensuring that any variations in the brand names are mapped to the correct top brand.
+# 
+# - **Identifying Top Brands:** We start by filtering out any unknown brand names and then count the occurrences of each brand. From this, we identify the top 5 brands with the highest frequency in the dataset.
+# - **Pattern Matching:** We create a pattern to search for these top brands in the brand names. If the brand name matches one of the top brands (e.g., includes "dell", "hp", etc.), we recognize it as a valid entry for that brand.
+# - **Mapping Variations to Top Brands:** We then apply a function to map variations of the brand names (e.g., "dell_epsilon" or "hp_dell") to the main brand names (e.g., "dell" or "hp"). This ensures that similar or ambiguous entries are standardized to the correct top brand.
+# 
+# By applying these steps, we ensure that any variations or inconsistencies in the brand names are correctly mapped to the top brands, improving the consistency and accuracy of our analysis.
+# 
+
 # In[9]:
 
 
+# Identify the top 5 most frequent brands in the dataset.
 top_brands = df.filter(pl.col('brand_clean').ne('unknown')) \
     .group_by('brand_clean') \
     .agg(pl.len().alias('count')) \
@@ -128,21 +157,41 @@ top_brands = df.filter(pl.col('brand_clean').ne('unknown')) \
     .select('brand_clean') \
     .to_series()
 
-
+# Create a regex pattern to match brand names followed by an underscore (_).
 is_a_top_brand_string_pattern = "|".join(re.escape(color) for color in top_brands + '_')
 
-def return_actual_brand_from_string(string, brand_list=top_brands):
+
+# Function to extract the actual brand from a string.
+def return_actual_brand_from_string(string: str, brand_list: list[str] = top_brands) -> str:
+    """
+    Extracts the first matching brand from a given string.
+
+    Args:
+        string (str): The input string containing the brand.
+        brand_list (list): List of top brands to check against.
+
+    Returns:
+        str: The first matched brand if found; otherwise, the original string.
+    """
     for brand in brand_list:
         if brand + '_' in string:
             return brand
     return string
 
+
+# Apply the brand extraction function to standardize brand names.
 df = df.with_columns(
-    pl.when(
+    pl
+    # Check if the brand contains any of the top brands and isn't a mixed brand like "dell_or_hp".
+    .when(
         pl.col('brand_clean').str.contains(is_a_top_brand_string_pattern) &
         ~pl.col('brand_clean').str.contains('_or_')
-    ).then(pl.col('brand_clean').map_elements(return_actual_brand_from_string, return_dtype=pl.Utf8))
+    )
+    # If the condition is met, map the brand name to its standardized version.
+    .then(pl.col('brand_clean').map_elements(return_actual_brand_from_string, return_dtype=pl.Utf8))
+    # Otherwise, keep the original brand name.
     .otherwise(pl.col('brand_clean'))
+    # Rename the transformed column as 'brand_clean'.
     .alias('brand_clean')
 )
 
@@ -150,34 +199,47 @@ df = df.with_columns(
 # In[10]:
 
 
+# Taking another look at the frequency of each brand: total count and proportion
 df['brand_clean'].value_counts().with_columns(
     (pl.col('count') / df.height).round(2).alias('proportion')
 ).sort(by='count', descending=True)
 
 
-# Key Observations:
-# - `dell` has more than 20 new records.
-# - # TODO: Write more key findings
+# Observations:
+# - **More records assigned to `dell`**: `dell` has more than 20 new records. (from `1273` to `1300`). Likely due to previously fragmented brand variations (e.g., `dell_inc`, `dell_xps`) now being mapped correctly to `dell`.
+# - **Consistent top brands**: The overall ranking of top brands did not change. The counts for `acer` (150), `lg` (125), `fujitsu_siemens` (123), `samsung` (122), `microsoft` (119), and AUO (114) remained stable, indicating that these brands were either already well-represented or had fewer naming inconsistencies.
 
 # ## Transforming the `price` variable
 # 
-# - By analyzing the `price` variable, we realize it has information about the currency and price of a laptop.
-# - The cost of a laptop might be fixed (e.g: `880`) or a range (e.g: `from 500 to 999`)
-# - `price` is currently a categorical (`String`) variable, due to commas, whitespaces and symbols. We **must convert** it into **float**.
+# - **Multiple info**: By analyzing the `price` variable, we realize it also has information about the currency (via symbols like `$`).
+# - **Inconsistent format**: The cost of a laptop might be fixed (e.g: `880`) or a range (e.g: `from 500 to 999`)
+# - **Bad typing**: `price` is currently a categorical (`String`) variable, due to commas, whitespaces and symbols. To use this data effectively for statistical models, we **MUST CONVERT** it into **NUMERICAL**, removing currency symbols and handling text-based variations like ranges.
 
 # In[11]:
 
 
-# Taking a look at the `price` variable as is
+# Taking a look at the first 5 records from the `price` column, as is
+df['price'].head(n=10)
 
-# First 5 records from the dataframe
-df['price'].head(n=5)
 
+# Observations:
+# - **Variable format**: Cost of a laptop might be either a range (`$399.99 to $634.99`) or a fixed price (`$399.99 to $634.99`).
+# - **Wrong typing**: Data is currently of `String` data type, instead of a numerical type, due to the presence of currency symbols and words ('to').
+
+# ### **Reformatting `price`:**
+# 
+# In this step, we focus on cleaning and standardizing the `price` variable to make it usable for further analysis. Currently, the `price` column contains multiple inconsistencies that need to be addressed.
+# 
+# - **Extracting Currency Symbols:** The dataset contains various currency symbols (such as `$`), which are separated from the numerical values, and assigned to a new variable `currency_clean`.
+# - **Handling Inconsistent Formats:** Prices appear in different formats, sometimes as a single fixed value (`880`) and other times as a range (`from 500 to 999`). We need to extract the lowest value from these ranges (`min_price_clean`) to ensure uniformity.
+# - **Ensuring Proper Data Types:** After cleaning, we cast the extracted price values to `Float64`, making them compatible with statistical models and numerical computations.
+# 
 
 # In[12]:
 
 
 df = df.with_columns(
+    # Extract the currency symbol from the price column
     pl.col('price').str.slice(0, 1).alias('currency_clean'),
     # Removing the currency symbol, commas from the price and trimming whitespace
     pl.col('price')
@@ -187,34 +249,41 @@ df = df.with_columns(
     .list.first()  # Obtaining the min_price, the first element of the list
     .str.strip_chars()  # Remove leading and trailing characters
     .cast(pl.Float64)  # Casting the min_price to float
-    .alias('min_price_clean')
+    .alias('min_price_clean')  # Renaming to reflect that it's the min price in case of ranges
 )
 
+# Preview the transformed data by displaying the top 5 rows
 df.select([
     'price', 'currency_clean', 'min_price_clean'
-]).head(n=5)
+]).head(n=10)
 
 
 # ## Transforming the `condition` variable
 # 
-# - By analyzing the `condition` variable, we realize it is composed of two separate items, the `condition_label` and the `condition_description`
+# By analyzing the `condition` variable, we realize it is composed of two separate items, label and description. It is important to create such columns within the dataset:
 # - **`condition_label`**: A categorical label which represents the condition of a laptop (e.g: `new`, `used`, `certified_refurbished`)
-# - **`condition_description`**: A description for the `condition_label` (e.g: `A brand-new, unused, unopened laptop.`)
+# - **`condition_description`**: A description for the `condition_label` (e.g: `A brand-new, unused, unopened laptop...`)
 
 # In[13]:
 
 
 # Taking a look at the values counts for the `condition` column
-
-df['condition'].value_counts().with_columns(
+df['condition'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
     (pl.col('count') / df.height).round(2).alias('proportion')
-).sort(by='count', descending=True)
+)
 
+
+# Observations:
+# - **Similar categories**: Labels `UsedAn item that has been used previously` and `Used: An item that has been used previously` seem to contain duplicate or nearly identical information but are represented differently. Similar things occur for other labels, such as `For parts or not working`. These discrepancies may need to be cleaned and consolidated into one label.
+# - **Bad formatting**: A considerable amount of labels show formatting issues (e.g., "UsedAn item...") or seem to be concatenated with additional descriptions. This would require text processing to standardize the condition labels and improve consistency.
 
 # In[14]:
 
 
-# Creating a dictionary which represents the `condition` labels and descriptions
+# Creating a dictionary which represents the condition labels and descriptions
 
 condition_replace_map = {
     'New': """A brand-new, unused, unopened, undamaged item in its original packaging.
@@ -253,7 +322,10 @@ condition_replace_map = {
 }
 
 
-# Creating a function to map condition values to a condition dictionary, which represents labels (e.g: `New`) as keys and description as values (e.g: `A brand-new, unused item`).
+# In[15]:
+
+
+# Creating a function to map condition values to a condition dictionary, which represents labels (e.g: `New`) as keys and description as values (e.g: `A brand-new, unused item...`).
 def map_condition(value, condition_dict=condition_replace_map):
     """
     Maps a given condition string to a predefined label and its corresponding description.
@@ -261,7 +333,7 @@ def map_condition(value, condition_dict=condition_replace_map):
     Args:
         value (str): The condition value to be matched.
         condition_dict (dict, optional): A dictionary where keys are condition labels and
-                                     values are descriptions. Defaults to `condition_replace_map`.
+                                         values are descriptions. Defaults to `condition_replace_map`.
 
     Returns:
         tuple: A tuple containing the matched label (str) and its corresponding description (str).
@@ -281,28 +353,31 @@ def map_condition(value, condition_dict=condition_replace_map):
     return 'No label', 'No description'
 
 
-# In[15]:
+# In[16]:
 
 
 # Transforming the dataframe, creating the `condition_label` and `condition_description` variables
 df_lazy_conditions = df.lazy().with_columns(
-    pl.col('condition').map_elements(
+    pl.col('condition')
+    # Applying the `map_condition` function, which maps a string to a predefined label and its corresponding description
+    .map_elements(
         function=map_condition,
         skip_nulls=False,
         return_dtype=pl.List(pl.Utf8)
-    ).alias('new_condition')
+    ).alias('new_condition')  # Creating a temporary column to store results
 ).with_columns(
-    pl.col('new_condition').list.get(0).alias('condition_label_clean'),
-    pl.col('new_condition').list.get(1).alias('condition_description_clean')
-).drop('new_condition')
+    pl.col('new_condition').list.get(0).alias('condition_label_clean'),  # Extract label
+    pl.col('new_condition').list.get(1).alias('condition_description_clean')  # Extract description
+).drop('new_condition')  # Dropping the temporary column
 
+# Visualize the query plan for the transformation
 LazyFrame.show_graph(df_lazy_conditions)
 
 
-# In[16]:
+# In[17]:
 
 
-# Selecting all unique values for condition, and their newly created condition labels and condition descriptions
+# Selecting all unique values for condition, and their soon to be assigned condition labels and condition descriptions
 df_lazy_conditions.unique(
     subset='condition',
     maintain_order=True,
@@ -314,19 +389,19 @@ df_lazy_conditions.unique(
 ).collect().to_pandas()
 
 
-# In[17]:
+# In[18]:
 
 
 # Reformatting `condition_label_clean` and `condition_description_clean`: replacing blank spaces for underscores and lowercasing
 df = df_lazy_conditions.with_columns(
     pl.col('condition_label_clean')
-    .str.to_lowercase()
-    .str.replace_all(' - ', '_')
-    .str.replace_all(' ', '_')
+    .str.to_lowercase()  # Converting the text to lowercase
+    .str.replace_all(' - ', '_')  # Replacing hyphen and spaces between words with underscores
+    .str.replace_all(' ', '_')  # Replacing spaces with underscores
     .alias('condition_label_clean')
-).collect()
+).collect() # Materializing the LazyFrame into a DataFrame
 
-# Selecting all unique values for condition, and their respective reformatted condition labels (condition description is left as is)
+# Selecting all unique values for condition, and their respective reformatted condition labels (condition description is not modified)
 df.unique(
     subset='condition',
     maintain_order=True,
@@ -338,11 +413,37 @@ df.unique(
 )
 
 
+# In[19]:
+
+
+# Taking a look at the values counts for the `condition_label_clean` column
+df['condition_label_clean'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
+
+
+# Observations:
+# - **New label frequencies**: After cleansing, the most common conditions are `used` (42%) and `new` (29%), which account for the majority of the dataset.
+
 # ## Transforming the `processor` variable
 # 
 # - TODO : Write analysis about the processor variable
 
-# In[18]:
+# In[20]:
+
+
+# Taking a look at the values counts for the `condition` column
+df['processor'].value_counts(
+    sort=True
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
+
+
+# In[21]:
 
 
 processor_replace_map = {
@@ -365,7 +466,7 @@ df.select(
 ).head()
 
 
-# In[19]:
+# In[22]:
 
 
 # Taking a look at unique `processor` with their respective `processor_clean` variables
@@ -387,7 +488,7 @@ df.select([
 # - `color` is currently a variable with a high number of nulls (approx. 68%)
 # - `color` contains data in spanish, as evidenced by its values `borgoña` (burgundy), `blanco` (white) or `negro` (black)
 
-# In[20]:
+# In[23]:
 
 
 # Color value counts and their proportion`
@@ -399,7 +500,7 @@ df['color'].value_counts().sort(
 )
 
 
-# In[21]:
+# In[24]:
 
 
 valid_color_values = ['beige', 'black', 'blue', 'bronze', 'brown', 'burgundy', 'gold', 'gray', 'green', 'grey',
@@ -424,7 +525,7 @@ color_replace_map = {
 color_replace_map
 
 
-# In[22]:
+# In[25]:
 
 
 def clean_color(color: str, color_list: list = valid_color_values) -> str:
@@ -454,7 +555,7 @@ def clean_color(color: str, color_list: list = valid_color_values) -> str:
         return 'other'
 
 
-# In[23]:
+# In[26]:
 
 
 # Creates an expression to search for valid colors
@@ -480,7 +581,7 @@ df = df.with_columns(
 df
 
 
-# In[24]:
+# In[27]:
 
 
 # Taking a look at the newly transformed color cleansed labels
