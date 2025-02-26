@@ -24,6 +24,8 @@ import re
 DATA_SOURCE_PATH = '../data/ebay_laptops_and_notebooks.csv'
 
 
+# ## Data Exploration
+
 # In[2]:
 
 
@@ -40,6 +42,10 @@ df.head(n=10)
 # * **Several** columns are being treated as `String` (such as `Price`), which might not be adequate.
 # * **Several** columns have **missing values**, which needs to be treated during further data preprocessing.
 
+# ### Summary Statistics
+# 
+# We compute the summary statistics for our dataset, but we instantly notice most of our columns are nullable, which makes statistics, such as the mean and standard deviation, to output `null` too.
+
 # In[3]:
 
 
@@ -47,29 +53,11 @@ df.head(n=10)
 df.describe()
 
 
+# ### Null Count and Null Proportion
+# 
+# Now, we take a look at the `null count` and `null proportion` per each dataframe column:
+
 # In[4]:
-
-
-# Data Types
-pl.DataFrame(data={
-    'column': df.columns,
-    'dtype': df.dtypes
-})
-
-
-# As aforementioned, many variables are currently being treated as `String`. In the case of `Price`, it is a numerical variable which is being incorrectly read as a categorical variable.
-
-# ## Data Preparation
-
-# In[5]:
-
-
-# Renaming columns: replacing blank spaces for underscores and lowercasing columns
-df = df.rename({col: col.lower().replace(' ', '_') for col in df.columns})
-print(df.columns)
-
-
-# In[6]:
 
 
 # Nulls per each column in the dataset
@@ -87,6 +75,36 @@ df.null_count().unpivot(
 # 
 # - Extremely high percentage (85%+) of nulls for columns such as `country_region_of_manufacturer`, `ratings_count` or `release_year`.
 # - `Price` column has no null values.
+
+# ### Data Types
+# 
+# We look at each column data type in the data frame
+
+# In[5]:
+
+
+# Data Types
+pl.DataFrame(data={
+    'column': df.columns,
+    'dtype': df.dtypes
+})
+
+
+# As aforementioned, some variables which are currently being treated as `String`, such as `Price`, are actually numerical. It's very important to find out whether this is a single column, or there are more occurrences within the dataframe.
+
+# ## Data Preparation
+
+# ## Column Renaming
+# 
+# We kick things off by *reformatting* the column names: lowercasing and removing spaces for underscores. These convention for string data will be **STANDARD** during our data cleansing process, so that most categorical data is transformed into similar formatting.
+
+# In[6]:
+
+
+# Renaming columns: replacing blank spaces for underscores and lowercasing columns
+df = df.rename({col: col.strip().lower().replace(' ', '_') for col in df.columns})
+print(df.columns)
+
 
 # ## Transforming the `brand` variable
 # - **Top categories**: The top three brands—Dell (19%), Lenovo (11%), and HP (7%)—represent a combined 37% of the total brands in the dataset. The null values account for 39% of the data, with 2596 entries marked as null. This is quite a large portion of the dataset. The top 4 categories (`null`, `Dell`, `Lenovo` & `HP`) account for 76% of the dataset.
@@ -263,13 +281,138 @@ df.select(
 ).head(n=10)
 
 
+# ## Transforming `rating` & `ratings_count`
+
+# In[13]:
+
+
+# Taking a look at the frequency of each rating: total count and proportion
+df['rating'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
+
+
+# Observations:
+# - **Extremely high null proportion**: 96% of entries have missing (`null`) ratings, significantly reducing the available data for analysis. Almost the entire column is composed of `null` values.
+# - **Strong positive bias**: Ratings are overwhelmingly positive, with **5 out of 5 stars (2%)** and **4.5 out of 5 stars (2%)** making up nearly all non-null values. Only **5 instances** have ratings of **3 stars or lower**, making it difficult to assess dissatisfaction trends.
+# - **Possible numerical conversion**: The `rating` column is currently a String but can be converted into an `Int` **five_star_scale** variable for analysis.
+
+# In[14]:
+
+
+# Taking a look at the frequency of each rating count: total count and proportion
+df['ratings_count'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
+
+
+# Observations:
+# - **High Null Proportion**: Similarly to `rating`, 96% of entries lack a `ratings_count`, making it almost impossible to gauge customer engagement.
+# - **Majority Single Reviews**: Most rated products have **1 to 6 reviews**, suggesting limited user feedback. A few products have significantly higher review counts (e.g., **1,533 reviews**), but these are rare.
+
+# ### Transforming `rating`
+# 
+# In this step, we transform the `rating` variable to variable `five_star_scale_rating` ( which, as its name implies, is a numerical variable ranging from 1-5; representing the product rating on a five star scale).
+
+# In[15]:
+
+
+# Define the regex pattern for extracting numeric values (including decimals)
+rating_pattern = r'(\d+(\.\d+)?)'  # Match whole numbers and decimal numbers (e.g., 4, 4.5)
+
+# Transforming the rating variable
+df = df.with_columns(
+    # Cleaning the rating column
+    pl.col('rating')
+    .str.replace_all(r' ', '_')  # Replace spaces with underscores
+    .str.replace_all(r'\.', '_')  # Replace decimal point with underscore for values like 3.5
+    .alias('rating_clean'),
+    # Using the rating pattern to match numbers
+    pl.when(pl.col('rating').str.contains(rating_pattern))
+    # If matched, convert to a numerical variable (e.g., 4, 4.5)
+    .then(
+        pl.col('rating')
+        # Extract the numeric value, including decimals
+        .str.extract(rating_pattern)
+        # Cast to float to handle half-star ratings
+        .cast(pl.Float32)
+    )
+    # Set null for non-matching or missing values
+    .otherwise(pl.lit(None).cast(pl.Float32).shrink_dtype())
+    .alias('five_star_scale_rating_clean')
+)
+
+
+# Now, we inspect our newly created `rating_clean` & `five_star_scale_rating_clean` variables, and compare them to the original `rating` variable
+
+# In[16]:
+
+
+rating_columns = ('rating', 'rating_clean', 'five_star_scale_rating_clean')
+
+df.select(
+    rating_columns
+).unique(
+    subset=rating_columns,
+).sort(
+    by='five_star_scale_rating_clean',
+    descending=True,
+)
+
+
+# As evidenced, data was successfully reformatted (and assigned to `rating_clean`) as well as parsed to `Float` (and assigned to`five_star_scale_rating_clean`).
+
+# ### Shrinking `ratings_count`
+# 
+# The `ratings_count` column is correctly parsed as a numerical variable, but we can shrink it, as its range is very small (from `1` to `1533`), as we can see in the summary statistics below.
+
+# In[17]:
+
+
+# Summary statistics the `ratings_count` variable
+df.select(
+    'ratings_count'
+).describe()
+
+
+# In[18]:
+
+
+# Shrinking the datatype for the `ratings_count` column
+df = df.with_columns(
+    pl.col('ratings_count')
+    .shrink_dtype()  # Shrink numeric columns to the minimal required datatype.
+    .alias('ratings_count_clean')
+)
+
+
+# Now, we can see the result of the shrinkage, which transformed the data type from `Int64` to `Int16`:
+
+# In[19]:
+
+
+ratings_count_columns = ['ratings_count', 'ratings_count_clean']
+ratings_count_columns_dtypes = zip(
+    [f'{x}_dtype' for x in ratings_count_columns],
+    df.select(ratings_count_columns).dtypes,
+)
+
+dict(ratings_count_columns_dtypes)
+
+
 # ## Transforming the `condition` variable
 # 
 # By analyzing the `condition` variable, we realize it is composed of two separate items, label and description. It is important to create such columns within the dataset:
 # - **`condition_label`**: A categorical label which represents the condition of a laptop (e.g: `new`, `used`, `certified_refurbished`)
 # - **`condition_description`**: A description for the `condition_label` (e.g: `A brand-new, unused, unopened laptop...`)
 
-# In[13]:
+# In[20]:
 
 
 # Taking a look at the values counts for the `condition` column
@@ -285,7 +428,7 @@ df['condition'].value_counts(
 # - **Similar categories**: Labels `UsedAn item that has been used previously` and `Used: An item that has been used previously` seem to contain duplicate or nearly identical information but are represented differently. Similar things occur for other labels, such as `For parts or not working`. These discrepancies may need to be cleaned and consolidated into one label.
 # - **Bad formatting**: A considerable amount of labels show formatting issues (e.g., "UsedAn item...") or seem to be concatenated with additional descriptions. This would require text processing to standardize the condition labels and improve consistency.
 
-# In[14]:
+# In[21]:
 
 
 # Creating a dictionary which represents the condition labels and descriptions
@@ -327,7 +470,7 @@ condition_replace_map = {
 }
 
 
-# In[15]:
+# In[22]:
 
 
 # Creating a function to map condition values to a condition dictionary, which represents labels (e.g: `New`) as keys and description as values (e.g: `A brand-new, unused item...`).
@@ -365,7 +508,7 @@ def map_condition(value, condition_dict=condition_replace_map):
 # - **Mapping conditions**: Repeated labels with different formats, such as `UsedAn item that has been used previously` and `Used: An item that has been used previously` are mapped to a single `condition_label` (`'Used'`) which helps us achieve a better label representation by getting rid of different categories that represent the same status (`Used`, `New`, etc.).
 # 
 
-# In[16]:
+# In[23]:
 
 
 # Transforming the dataframe, creating the `condition_label` and `condition_description` variables
@@ -388,7 +531,7 @@ LazyFrame.show_graph(df_lazy_conditions)
 
 # Here we take a look at the values from our `condition` column, and their correspondent **condition labels** and **condition descriptions**.
 
-# In[17]:
+# In[24]:
 
 
 # Selecting all unique values for condition, and their soon-to-be assigned condition labels and condition descriptions
@@ -410,7 +553,7 @@ df_lazy_conditions.unique(
 # - **Standardizing format:** Replacing occurrences hyphens and whitespaces with an underscore (`_`), making the labels more consistent and clean.
 # 
 
-# In[18]:
+# In[25]:
 
 
 # Reformatting `condition_label_clean` and `condition_description_clean`: replacing blank spaces for underscores and lowercasing
@@ -436,7 +579,7 @@ df.unique(
 
 # Finally, we take a look at the new `condition_label` variable:
 
-# In[19]:
+# In[26]:
 
 
 # Taking a look at the values counts for the `condition_label_clean` column
@@ -457,7 +600,7 @@ df['condition_label_clean'].value_counts(
 # - **Unknown values**: There's an abundance of brands with very low frequencies, or unknown values (like `?` or `Does not apply` or `no` or `none`).
 # 
 
-# In[20]:
+# In[27]:
 
 
 # Taking a look at the values counts for the `processor` column
@@ -482,7 +625,7 @@ df['processor'].value_counts(
 # - **Consistent Formatting:** We ensure all processor names are in lowercase, and we remove any unnecessary spaces or punctuation that could create inconsistencies. (transforming `Intel core - 7th gen.` into `intel_core_7th_gen`).
 # - **Replacing Uncertain Values:** We also handle special cases where the data might have uncertain or irrelevant values (e.g., `?` or `no`), replacing them with more meaningful values such as `unknown` or `not_applicable`.
 
-# In[21]:
+# In[28]:
 
 
 # Define a mapping to handle various non-standard or missing values in the 'processor' column.
@@ -511,7 +654,7 @@ df.select(
 ).head(n=10)
 
 
-# In[22]:
+# In[29]:
 
 
 # Taking a look at the poorly formatted `processor` values, with their correspondent values in `processor_clean`
@@ -530,7 +673,7 @@ df.select(
 
 # Finally, we inspect visually our newly created `processor_clean` variable:
 
-# In[23]:
+# In[30]:
 
 
 # Taking a look the new `processor_clean` column and its value counts
@@ -546,7 +689,7 @@ df['processor_clean'].value_counts(
 # - `color` is currently a variable with a high number of nulls (approx. 68%)
 # - `color` contains data in spanish, as evidenced by some of its values: `borgoña` (burgundy), `blanco` (white) or `negro` (black)
 
-# In[24]:
+# In[31]:
 
 
 # Color value counts and their proportion`
@@ -558,7 +701,7 @@ df['color'].value_counts().sort(
 )
 
 
-# In[25]:
+# In[32]:
 
 
 # List of valid color values for consistency checks
@@ -586,7 +729,7 @@ color_replace_map = {
 color_replace_map
 
 
-# In[26]:
+# In[33]:
 
 
 def clean_color(color: str, color_list: list = valid_color_values) -> str:
@@ -622,7 +765,7 @@ def clean_color(color: str, color_list: list = valid_color_values) -> str:
 # - **Reducing color cardinality:** The color data may contain variations or inconsistencies in how colors are labeled (e.g., "multi-color" vs. "multicolor"). We address this by grouping similar colors under consistent labels, reducing the number of unique color categories.
 # - **Standardizing format:** check whether the color listed for each item matches a set of predefined valid colors. Ensures that all color data follows a consistent format.
 
-# In[27]:
+# In[34]:
 
 
 # Creates an expression to search for valid colors
@@ -655,7 +798,7 @@ df.select(
 
 # We further inspect the original unique values of the `color` column, and its correspondent mapping in `color_clean`:
 
-# In[28]:
+# In[35]:
 
 
 # Taking a look at all the transformed color labels
