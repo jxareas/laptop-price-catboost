@@ -20,12 +20,15 @@ import polars as pl
 from polars import LazyFrame
 import re
 
+# Data source location
+DATA_SOURCE_PATH = '../data/ebay_laptops_and_notebooks.csv'
+
 
 # In[2]:
 
 
 # Loading the dataset
-df = pl.read_csv('../data/ebay_laptops_and_notebooks.csv')
+df = pl.read_csv(DATA_SOURCE_PATH)
 
 # Top 10 rows from the dataframe
 df.head(n=10)
@@ -103,7 +106,7 @@ df['brand'].value_counts(
 )
 
 
-# ### **Reformatting Brands:**
+# ### **Reformatting `brand`:**
 # 
 # In this step of our analysis, we're focusing on cleaning up and standardizing the `brand` data to ensure consistency and accuracy. Brands can be listed in many different ways, which can lead to confusion or misinterpretation during analysis. So, we're transforming the brand names into a uniform format that makes it easier to work with.
 # 
@@ -149,13 +152,15 @@ df = df.with_columns(
 
 
 # Identify the top 5 most frequent brands in the dataset.
-top_brands = df.filter(pl.col('brand_clean').ne('unknown')) \
-    .group_by('brand_clean') \
-    .agg(pl.len().alias('count')) \
-    .sort('count', descending=True) \
-    .head(5) \
-    .select('brand_clean') \
+top_brands = (
+    df.filter(pl.col('brand_clean').ne('unknown'))
+    .group_by('brand_clean')
+    .agg(pl.len().alias('count'))
+    .sort('count', descending=True)
+    .head(5)
+    .select('brand_clean')
     .to_series()
+)
 
 # Create a regex pattern to match brand names followed by an underscore (_).
 is_a_top_brand_string_pattern = "|".join(re.escape(color) for color in top_brands + '_')
@@ -253,9 +258,9 @@ df = df.with_columns(
 )
 
 # Preview the transformed data by displaying the top 5 rows
-df.select([
+df.select(
     'price', 'currency_clean', 'min_price_clean'
-]).head(n=10)
+).head(n=10)
 
 
 # ## Transforming the `condition` variable
@@ -353,6 +358,13 @@ def map_condition(value, condition_dict=condition_replace_map):
     return 'No label', 'No description'
 
 
+# ### Separating condition label and condition description
+# 
+# - **Splitting data**: We assign values from the `condition` column (like `New`, `Used`, or `Refurbished`) to a standardized label and description. This ensures that any variation in wording across the data is unified, so we can easily categorize and compare items.
+#   - For example, if we have a condition like `Excellent - Refurbished`, it gets split into two parts: a **label** (`Excellent - Refurbished`) and a **description** that explains the condition in more detail (e.g: The item is in like-new condition, backed by a one-year warranty...).
+# - **Mapping conditions**: Repeated labels with different formats, such as `UsedAn item that has been used previously` and `Used: An item that has been used previously` are mapped to a single `condition_label` (`'Used'`) which helps us achieve a better label representation by getting rid of different categories that represent the same status (`Used`, `New`, etc.).
+# 
+
 # In[16]:
 
 
@@ -374,10 +386,12 @@ df_lazy_conditions = df.lazy().with_columns(
 LazyFrame.show_graph(df_lazy_conditions)
 
 
+# Here we take a look at the values from our `condition` column, and their correspondent **condition labels** and **condition descriptions**.
+
 # In[17]:
 
 
-# Selecting all unique values for condition, and their soon to be assigned condition labels and condition descriptions
+# Selecting all unique values for condition, and their soon-to-be assigned condition labels and condition descriptions
 df_lazy_conditions.unique(
     subset='condition',
     maintain_order=True,
@@ -385,9 +399,16 @@ df_lazy_conditions.unique(
     by='condition',
     descending=False,
 ).select(
-    ['condition', 'condition_label_clean', 'condition_description_clean']
+    'condition', 'condition_label_clean', 'condition_description_clean'
 ).collect().to_pandas()
 
+
+# ### **Reformatting `condition`:**
+# 
+# After splitting our `condition` column into `condition_label` and `condition_description`, we will further clean the `condition_label` column by doing the following string operations:
+# - **Lowercasing:** Modifying all strings to their lowercase equivalent.
+# - **Standardizing format:** Replacing occurrences hyphens and whitespaces with an underscore (`_`), making the labels more consistent and clean.
+# 
 
 # In[18]:
 
@@ -401,7 +422,7 @@ df = df_lazy_conditions.with_columns(
     .alias('condition_label_clean')
 ).collect()  # Materializing the LazyFrame into a DataFrame
 
-# Selecting all unique values for condition, and their respective reformatted condition labels (condition description is not modified)
+# Selecting all unique values for condition, and their respective reformatted condition labels (condition description is not modified, so it is omitted from this lookup)
 df.unique(
     subset='condition',
     maintain_order=True,
@@ -412,6 +433,8 @@ df.unique(
     ['condition', 'condition_label_clean']
 )
 
+
+# Finally, we take a look at the new `condition_label` variable:
 
 # In[19]:
 
@@ -426,7 +449,8 @@ df['condition_label_clean'].value_counts(
 
 
 # Observations:
-# - **New label frequencies**: After cleansing, the most common conditions are `used` (42%) and `new` (29%), which account for the majority of the dataset.
+# - **New label frequencies**: After cleansing, the most common conditions are `used` (42%) and `new` (29%), which account for the majority of the dataset (71%).
+# - **Lower cardinality**: We have a considerably minor number of unique values within our `condition_label` variable (**just 10 unique values**), than we did with `condition`, due to the proper cleansing of the data.
 
 # ## Transforming the `processor` variable
 # - **Formatting**: Similarly, as done with other variables, we'll reformat the values, so that `Intel Celeron` is transformed into `intel_celeron`.
@@ -446,9 +470,17 @@ df['processor'].value_counts(
 
 
 # Observations:
-# - **Significant amount missing data**: 2% of the entries are marked as `null` and 8% as `Does not apply`, together representing 50% of the dataset.
+# - **Missing data**: 42% of the entries are marked as `null` and 8% as `Does not apply`, together representing 50% of the dataset.
 # - **Low variety**: All processors in the top 10 are of `Intel` brand, with diversity in performance levels but very little in manufacturer.
-# - **Feature engineering potential**: The processor type indicates both the model and the generation, which can be extracted for further analysis.
+# - **High cardinality**: `processor` contains 462 unique values, as some of its information contains details such as brand (`intel`/`amd`), model (`celeron`), generation (`8th gen`), etc.
+# - **Feature engineering potential**: Some processors indicate both the model and the generation (`Intel core i5 8th gen`), which can be extracted for further analysis.
+
+# ### **Reformatting `processor`:**
+# 
+# In this step of our analysis, we're focusing on cleaning up and standardizing the `brand` data to ensure consistency and accuracy. Brands can be listed in many different ways, which can lead to confusion or misinterpretation during analysis. So, we're transforming the brand names into a uniform format that makes it easier to work with.
+# 
+# - **Consistent Formatting:** We ensure all processor names are in lowercase, and we remove any unnecessary spaces or punctuation that could create inconsistencies. (transforming `Intel core - 7th gen.` into `intel_core_7th_gen`).
+# - **Replacing Uncertain Values:** We also handle special cases where the data might have uncertain or irrelevant values (e.g., `?` or `no`), replacing them with more meaningful values such as `unknown` or `not_applicable`.
 
 # In[21]:
 
@@ -482,10 +514,10 @@ df.select(
 # In[22]:
 
 
-# Taking a look at the badly formatted `processor` values, with their correspondent values in `processor_clean`
-df.select([
+# Taking a look at the poorly formatted `processor` values, with their correspondent values in `processor_clean`
+df.select(
     'processor', 'processor_clean',
-]).filter(
+).filter(
     pl.col('processor').str.to_lowercase().is_in(processor_replace_map)
 ).unique(
     subset='processor',
@@ -495,6 +527,8 @@ df.select([
     descending=False,
 )
 
+
+# Finally, we inspect visually our newly created `processor_clean` variable:
 
 # In[23]:
 
@@ -509,9 +543,8 @@ df['processor_clean'].value_counts(
 
 
 # # Transforming the `color` variable
-# 
 # - `color` is currently a variable with a high number of nulls (approx. 68%)
-# - `color` contains data in spanish, as evidenced by its values `borgoña` (burgundy), `blanco` (white) or `negro` (black)
+# - `color` contains data in spanish, as evidenced by some of its values: `borgoña` (burgundy), `blanco` (white) or `negro` (black)
 
 # In[24]:
 
@@ -583,6 +616,12 @@ def clean_color(color: str, color_list: list = valid_color_values) -> str:
         return 'other'
 
 
+# ### **Reformatting `color`:**
+# In this step of our analysis, we're focusing on cleaning up and standardizing the `color` data to ensure consistency and accuracy.
+# - **Translating from spanish to english:** We translate color names from Spanish to English to ensure that all color information is standardized, regardless of the language it was originally provided in.
+# - **Reducing color cardinality:** The color data may contain variations or inconsistencies in how colors are labeled (e.g., "multi-color" vs. "multicolor"). We address this by grouping similar colors under consistent labels, reducing the number of unique color categories.
+# - **Standardizing format:** check whether the color listed for each item matches a set of predefined valid colors. Ensures that all color data follows a consistent format.
+
 # In[27]:
 
 
@@ -590,9 +629,11 @@ def clean_color(color: str, color_list: list = valid_color_values) -> str:
 valid_color_string_pattern = "|".join(re.escape(color) for color in valid_color_values)
 
 # Prepare the color column by converting to lowercase and applying the color replacements
-color_reformatted = pl.col('color') \
-    .str.to_lowercase() \
+color_reformatted = (
+    pl.col('color')
+    .str.to_lowercase()
     .replace(color_replace_map)
+)
 
 df = df.with_columns(
     pl.coalesce(
@@ -607,18 +648,20 @@ df = df.with_columns(
     ).alias('color_clean')
 )
 
-df.select([
+df.select(
     'color', 'color_clean'
-]).head(n=10)
+).head(n=10)
 
+
+# We further inspect the original unique values of the `color` column, and its correspondent mapping in `color_clean`:
 
 # In[28]:
 
 
 # Taking a look at all the transformed color labels
-df.select([
+df.select(
     'color', 'color_clean',
-]).unique(
+).unique(
     subset='color',
     maintain_order=True,
 ).sort(
