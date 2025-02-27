@@ -796,8 +796,8 @@ df['screen_size_inches_clean'].describe()
 # Observations:
 # - **Narrower distribution**: The new statistics show a mean of `13.81` inches with a standard deviation of `1.61` inches. This is an **HIGH REDUCTION** in variability, particularly compared to the previous standard deviation of `24.22` inches. This suggests that removing extreme outliers has led to a more consistent and predictable distribution of screen sizes.
 
-# ## Cleaning `manufacturer_color`
-# By analyzing the value counts in the `manufacturer_color` column, we can visualize that:
+# ## Cleaning `manufacturer_color` & `color`
+# Manufacturer color consists of the color specified by the laptop manufacturer. By analyzing the value counts in the `manufacturer_color` column, we can visualize that:
 # - Manufacturer color is almost composed entirely of `NULL` values, with 97% of its values being null.
 # - Some entries represent multiple colors in a single field (e.g: `Black & Silver`).
 # - Most entries have very little frequency, appearing a single time in the entire column. These rare values might be considered noise (and grouped into a rare label category, such as `rare` or `other`) or might to be grouped into broader categories by using the color label (such as grouping `Mica Silver` and `Ice Blue` into a broader `Blue` category).
@@ -820,8 +820,7 @@ df['manufacturer_color'].value_counts(
 # - **Low Frequency Entries**: A significant number of color values appear only once or twice. These rare values might be considered noise or need to be grouped into broader categories to improve the utility of this feature for analysis or modeling.
 # 
 
-# ## Cleaning `color`
-# By analyzing the value counts in the `color` column, we can visualize that:
+# Similarly, `color` consists of the actual color of the laptop as listed by the seller. By analyzing the value counts in the `color` column, we can visualize that:
 # - Color is currently a variable with a high number of nulls, which compose approx. 68% of the column.
 # - Color contains data in spanish, as evidenced by some of its values: `borgoña` (burgundy), `blanco` (white) or `negro` (black).
 # - Some entries represent multiple colors in a single field (e.g: `Black/ Blue / Sandtone / Platinum`).
@@ -842,6 +841,11 @@ df['color'].value_counts(
 # - **Missing Data**: A significant portion of the data is missing, with 68% of instances marked as `null`. This indicates that a large part of the `color` information is unavailable, which may require additional cleaning, maybe imputation strategies, to handle effectively.
 # - **Different Languages**: The `color` column includes color names in spanish, such as `Negro` (Spanish for black) and `Gris` (Spanish for gray), as well as English terms like `Carbon Black` and `Silver`. This inconsistency in language could lead to confusion in analysis or models, and standardizing the language or grouping similar colors may be beneficial.
 # - **Multiple Colors**: Some entries, like `Black/ Blue / Sandtone / Platinum` or `Multicolor`, represent multiple colors in a single field. These values may need to be split into individual colors or categorized into a broader "multicolor" group to maintain consistency and facilitate analysis.
+
+# ### **Reformatting `manufacturer_color`:**
+# In this step of our analysis, we're focusing on cleaning up and standardizing the `manufacturer_color` data to ensure consistency and accuracy.
+# - **Reducing cardinality:** The color data may contain variations or inconsistencies in how colors are labeled (e.g., `multi-color` vs. `multicolor`). We address this by grouping similar colors under consistent labels, reducing the number of unique color categories. We also map color variations (e.g, `sky blue`, `light blue`) to a single color (`blue`).
+# - **Standardizing format:** Check whether the color listed for each item matches a set of predefined valid colors. Ensures that all color data follows a consistent format.
 
 # In[40]:
 
@@ -901,17 +905,69 @@ def clean_color(color: str, color_list: list = valid_color_values) -> str:
         return 'other'
 
 
-# ### **Reformatting `color`:**
-# In this step of our analysis, we're focusing on cleaning up and standardizing the `color` data to ensure consistency and accuracy.
-# - **Translating from spanish to english:** We translate color names from Spanish to English to ensure that all color information is standardized, regardless of the language it was originally provided in.
-# - **Reducing color cardinality:** The color data may contain variations or inconsistencies in how colors are labeled (e.g., "multi-color" vs. "multicolor"). We address this by grouping similar colors under consistent labels, reducing the number of unique color categories. We also map color variations (e.g, "sky blue", "light blue") to a single color ("blue").
-# - **Standardizing format:** check whether the color listed for each item matches a set of predefined valid colors. Ensures that all color data follows a consistent format.
-
 # In[42]:
 
 
 # Creates an expression to search for valid colors
 valid_color_string_pattern = "|".join(re.escape(color) for color in valid_color_values)
+
+# Prepare the color column by converting to lowercase and applying the color replacements
+manufacturer_color_reformatted = (
+    pl.col('manufacturer_color')
+    .str.to_lowercase()
+    .replace(color_replace_map)
+)
+
+df = df.with_columns(
+    pl.coalesce(
+        # If color is valid then apply the `clean_color` function, and map its value to a valid color, multicolor or other (rare label, for invalid color categories)
+        pl.when(manufacturer_color_reformatted.str.contains(valid_color_string_pattern))
+        .then(manufacturer_color_reformatted.map_elements(clean_color, return_dtype=pl.Utf8)),
+        # If color value is set to multicolor, then return multicolor
+        pl.when(manufacturer_color_reformatted.eq('multicolor'))
+        .then(pl.lit('multicolor'))
+        # If value is not multicolor nor a single color,then assign it to `other`
+        .otherwise(pl.lit('other'))
+    )
+    .str.replace('grey', 'gray') # Naturally, we need to map grey to gray (or vice versa) as it represents the same color
+    .alias('manufacturer_color_clean')
+)
+
+df.select(
+    'manufacturer_color', 'manufacturer_color_clean'
+).unique(
+    subset='manufacturer_color',
+    maintain_order=True,
+).head(10)
+
+
+# We further inspect the original unique values of the `manufacturer_color` column, and its correspondent mapping in `manufacturer_color_clean`:
+
+# In[43]:
+
+
+# Taking a look at all the transformed color labels
+df.select(
+    'manufacturer_color', 'manufacturer_color_clean',
+).unique(
+    subset='manufacturer_color',
+    maintain_order=True,
+).sort(
+    by='manufacturer_color',
+).transpose(
+    include_header=True,
+    header_name='column_name',
+)
+
+
+# ### **Reformatting `color`:**
+# We do similarly with `color` as we did with `manufacturer_color` by translating, reducing cardinality and standardizing its format in the following manner:
+# - **Translating from Spanish to English:** We translate color names from Spanish to English to ensure that all color information is standardized, regardless of the language it was originally provided in.
+# - **Reducing cardinality:** The color data may contain variations or inconsistencies in how colors are labeled (e.g., `multi-color` vs. `multicolor`). We address this by grouping similar colors under consistent labels, reducing the number of unique color categories. We also map color variations (e.g, `sky blue`, `light blue`) to a single color (`blue`).
+# - **Standardizing format:** check whether the color listed for each item matches a set of predefined valid colors. Ensures that all color data follows a consistent format.
+
+# In[44]:
+
 
 # Prepare the color column by converting to lowercase and applying the color replacements
 color_reformatted = (
@@ -930,7 +986,9 @@ df = df.with_columns(
         .then(pl.lit('multicolor'))
         # If value is not multicolor nor a single color,then assign it to `other`
         .otherwise(pl.lit('other'))
-    ).alias('color_clean')
+    )
+    .str.replace('grey', 'gray') # Naturally, we need to map grey to gray (or vice versa) as it represents the same color
+    .alias('color_clean')
 )
 
 df.select(
@@ -940,7 +998,7 @@ df.select(
 
 # We further inspect the original unique values of the `color` column, and its correspondent mapping in `color_clean`:
 
-# In[43]:
+# In[45]:
 
 
 # Taking a look at all the transformed color labels
@@ -956,3 +1014,20 @@ df.select(
     header_name='column_name',
 )
 
+
+# We can also visualize its new value counts:
+
+# In[46]:
+
+
+# Color cleaned value counts and their proportion
+df['color_clean'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
+
+
+# Observations:
+# - **Lower cardinality and higher frequencies**: As a consequence of mapping colors into broader color categories and the rare category (`other`) the cardinality has decreased from more than 80 different colors to 20. This has also caused the increase in the proportion of several categories, such as `black` increasing from 15% to 19%.
