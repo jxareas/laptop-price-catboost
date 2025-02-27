@@ -106,7 +106,7 @@ df = df.rename({col: col.strip().lower().replace(' ', '_') for col in df.columns
 print(df.columns)
 
 
-# ## Transforming the `brand` variable
+# ## Cleaning `brand`
 # - **Top categories**: The top three brands—Dell (19%), Lenovo (11%), and HP (7%)—represent a combined 37% of the total brands in the dataset. The null values account for 39% of the data, with 2596 entries marked as null. This is quite a large portion of the dataset. The top 4 categories (`null`, `Dell`, `Lenovo` & `HP`) account for 76% of the dataset.
 # - **Unknown values**: There's an abundance of brands with very low frequencies, or unknown values (like `?` or `Does not apply`).
 # - **Inconsistent formatting**: Some entries like `Dell Inc` are not captured under the main brand `Dell` due to inconsistent formatting. Similar things occur to other top brands.
@@ -232,7 +232,7 @@ df['brand_clean'].value_counts().with_columns(
 # - **More records assigned to `dell`**: `dell` has more than 20 new records. (from `1273` to `1300`). Likely due to previously fragmented brand variations (e.g., `dell_inc`, `dell_xps`) now being mapped correctly to `dell`.
 # - **Consistent top brands**: The overall ranking of top brands did not change. The counts for `acer` (150), `lg` (125), `fujitsu_siemens` (123), `samsung` (122), `microsoft` (119), and AUO (114) remained stable, indicating that these brands were either already well-represented or had fewer naming inconsistencies.
 
-# ## Transforming the `price` variable
+# ## Cleaning `price`
 # 
 # - **Multiple info**: By analyzing the `price` variable, we realize it also has information about the currency (via symbols like `$`).
 # - **Inconsistent format**: The cost of a laptop might be fixed (e.g: `880`) or a range (e.g: `from 500 to 999`)
@@ -281,7 +281,7 @@ df.select(
 ).head(n=10)
 
 
-# ## Transforming `rating` & `ratings_count`
+# ## Cleaning `rating` & `ratings_count`
 
 # In[13]:
 
@@ -316,9 +316,9 @@ df['ratings_count'].value_counts(
 # - **High Null Proportion**: Similarly to `rating`, 96% of entries lack a `ratings_count`, making it almost impossible to gauge customer engagement.
 # - **Majority Single Reviews**: Most rated products have **1 to 6 reviews**, suggesting limited user feedback. A few products have significantly higher review counts (e.g., **1,533 reviews**), but these are rare.
 
-# ### Transforming `rating`
+# ### Reformatting `rating`
 # 
-# In this step, we transform the `rating` variable to variable `five_star_scale_rating` ( which, as its name implies, is a numerical variable ranging from 1-5; representing the product rating on a five star scale).
+# In this step, we transform the `rating` variable to variable `five_star_scale_rating` ( which, as its name implies, is a numerical variable ranging from 1-5; representing the product rating on a five-star scale) as well as clean its format (replacing spaces / decimal points with underscores) and assign the result to `rating_clean`.
 
 # In[15]:
 
@@ -406,7 +406,7 @@ ratings_count_columns_dtypes = zip(
 dict(ratings_count_columns_dtypes)
 
 
-# ## Transforming the `condition` variable
+# ## Cleaning `condition`
 # 
 # By analyzing the `condition` variable, we realize it is composed of two separate items, label and description. It is important to create such columns within the dataset:
 # - **`condition_label`**: A categorical label which represents the condition of a laptop (e.g: `new`, `used`, `certified_refurbished`)
@@ -577,7 +577,7 @@ df.unique(
 )
 
 
-# Finally, we take a look at the new `condition_label` variable:
+# Finally, we take a look at the new `condition_label` variable and its value counts:
 
 # In[26]:
 
@@ -595,7 +595,7 @@ df['condition_label_clean'].value_counts(
 # - **New label frequencies**: After cleansing, the most common conditions are `used` (42%) and `new` (29%), which account for the majority of the dataset (71%).
 # - **Lower cardinality**: We have a considerably minor number of unique values within our `condition_label` variable (**just 10 unique values**), than we did with `condition`, due to the proper cleansing of the data.
 
-# ## Transforming the `processor` variable
+# ## Cleaning `processor`
 # - **Formatting**: Similarly, as done with other variables, we'll reformat the values, so that `Intel Celeron` is transformed into `intel_celeron`.
 # - **Unknown values**: There's an abundance of brands with very low frequencies, or unknown values (like `?` or `Does not apply` or `no` or `none`).
 # 
@@ -685,23 +685,165 @@ df['processor_clean'].value_counts(
 )
 
 
-# # Transforming the `color` variable
-# - `color` is currently a variable with a high number of nulls (approx. 68%)
-# - `color` contains data in spanish, as evidenced by some of its values: `borgoña` (burgundy), `blanco` (white) or `negro` (black)
+# ## Cleaning `screen_size`
 
 # In[31]:
 
 
-# Color value counts and their proportion`
-df['color'].value_counts().sort(
-    by='count',
+# Screen size value counts and their proportion
+df['screen_size'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+).to_pandas()
+
+
+# ### Extracting inches from `screen_size`
+# 
+# In order to have an accurate processing of `screen_size`, we'll extract the inches from the `screen_size` column and assign them to a numerical variable named `screen_size_inches`.
+# 
+# In this way, we can perform further analysis, visualization and numerical computations on the screen size, ensuring that we no longer have to deal with mixed formats.
+
+# In[32]:
+
+
+# Define the regex pattern to extract numeric values (floating point or integer) from screen_size column
+screen_size_pattern = r'(\d+(\.\d+)?)'
+
+df = df.with_columns(
+    # Clean the screen_size column by extracting the numeric part (screen size in inches)
+    pl.col('screen_size')
+    .str.extract(screen_size_pattern)  # Extract the numeric part
+    .cast(pl.Float32)  # Convert the extracted value to Float64
+    .alias('screen_size_inches_clean')
+)
+
+df['screen_size_inches_clean'].head(n=10)
+
+
+# We can now take a look at the summary statistics for the new `screen_size_inches` variable
+
+# In[33]:
+
+
+# Looking at the summary statistics for the `screen_size_inches` variable
+df['screen_size_inches_clean'].describe()
+
+
+# Observations:
+# - **Wide Distribution**: The `screen_size_inches_clean` column has a mean value of 14.40 inches, with a standard deviation of 24.22 inches, indicating a relatively wide spread in values. 25% of the data is below 13.0 inches, and 75% is below 15.0 inches.
+# - **Missing Data**: The column contains a significant amount of missing values (`null_count = 3289`). This highlights the need for potential imputation or cleaning strategies to handle missing data effectively.
+# - **Extreme Outliers**: The minimum value is 2.0 inches, while the maximum reaches up to 1000.0 inches, suggesting some extreme outliers, which could distort any analysis or model using this data. These outliers should be further investigated and possibly removed or transformed, when doing *statistical analysis*.
+
+# ### Correcting outliers
+# 
+# We're interested in correcting the outliers in the `screen_size_inches` column, as the maximum value is that of a `1000` inches, which makes very little sense. We'll start by visualizing the top values from that column, to see whether we have several outliers or this is just the product of an error in the data extraction process:
+
+# In[34]:
+
+
+df['screen_size_inches_clean'].filter(
+    predicate=df['screen_size_inches_clean'].is_not_null()
+).sort(
     descending=True,
+)
+
+
+# We immediately realize we have just two values of `1000` inches, which are heavily skewing the data. The rest of the distribution lies between the range of `2-18` inches, which is sensible.
+# In order to address this, we need to find where these values are originally located. Which is, the `screen_size` column:
+
+# In[35]:
+
+
+df.select('screen_size').filter(pl.col('screen_size').str.contains('1000'))
+
+
+# We come to the immediate realization that `Jumbo Heuer 1000`, the original `screen_size` value, is clearly not a valid screen size.
+# 
+#  It doesn't contain any numeric value that would correspond to a typical screen size in inches (e.g., "15.6", "12.5", etc.). Instead, the word "1000" is part of a non-numeric string, likely from a misformatted entry during the web scraping process, or the scraping of a wrong tag. As a result, extracting 1000 as the screen size would lead to misleading or incorrect analysis of the data, as screen sizes in inches don't reach values like 1000 inches.
+# 
+# Hence, we replace these unreasonable values with `None` to ensure that the data used for analysis remains consistent and meaningful.
+
+# In[36]:
+
+
+# Replace rows where screen_size_inches_clean is equal to a thousand (which is incorrect data)
+df = df.with_columns(
+    pl.when(pl.col('screen_size_inches_clean').is_in([1000]))  # Handle extreme values
+    .then(None)  # Replace with None (we might also consider using a default value, like the mean or median)
+    .otherwise(pl.col('screen_size_inches_clean'))
+    .alias('screen_size_inches_clean')
+)
+
+# Sorting the screen size in inches in descending order
+df['screen_size_inches_clean'].filter(
+    predicate=df['screen_size_inches_clean'].is_not_null()
+).sort(
+    descending=True,
+)
+
+
+# Now, we see that the maximum value for the *screen size in inches* variable make a lot more sense. We proceed to visualize its summary statistics once again:
+
+# In[37]:
+
+
+# Looking back at the summary statistics for the `screen_size_inches` variable
+df['screen_size_inches_clean'].describe()
+
+
+# Observations:
+# - **Narrower distribution**: The new statistics show a mean of `13.81` inches with a standard deviation of `1.61` inches. This is an **HIGH REDUCTION** in variability, particularly compared to the previous standard deviation of `24.22` inches. This suggests that removing extreme outliers has led to a more consistent and predictable distribution of screen sizes.
+
+# ## Cleaning `manufacturer_color`
+# By analyzing the value counts in the `manufacturer_color` column, we can visualize that:
+# - Manufacturer color is almost composed entirely of `NULL` values, with 97% of its values being null.
+# - Some entries represent multiple colors in a single field (e.g: `Black & Silver`).
+# - Most entries have very little frequency, appearing a single time in the entire column. These rare values might be considered noise (and grouped into a rare label category, such as `rare` or `other`) or might to be grouped into broader categories by using the color label (such as grouping `Mica Silver` and `Ice Blue` into a broader `Blue` category).
+
+# In[38]:
+
+
+# Color value counts and their proportion
+df['manufacturer_color'].value_counts(
+    sort=True,
+    parallel=True,
 ).with_columns(
     (pl.col('count') / df.height).round(2).alias('proportion')
 )
 
 
-# In[32]:
+# Observations:
+# - **Almost all data is NULL**: The `manufacturer_color` column contains a large amount of missing data, with 6435 instances marked as `null`, representing 97% of the dataset. This makes the variable have very little influence for further analysis or modeling techniques.
+# - **Diverse color variants**: The column contains various color names with different variations and formats, such as `Black & Silver` and `Matte Black`, as well as entries like `Iron Grey, Ice Blue` and `Scarlet red cover and base, natural silver keyboard frame` which suggest complex multi-color or detailed descriptions. These need to be **STANDARDIZED FOR CONSISTENCY**.
+# - **Low Frequency Entries**: A significant number of color values appear only once or twice. These rare values might be considered noise or need to be grouped into broader categories to improve the utility of this feature for analysis or modeling.
+# 
+
+# ## Cleaning `color`
+# By analyzing the value counts in the `color` column, we can visualize that:
+# - Color is currently a variable with a high number of nulls, which compose approx. 68% of the column.
+# - Color contains data in spanish, as evidenced by some of its values: `borgoña` (burgundy), `blanco` (white) or `negro` (black).
+# - Some entries represent multiple colors in a single field (e.g: `Black/ Blue / Sandtone / Platinum`).
+
+# In[39]:
+
+
+# Color value counts and their proportion
+df['color'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
+
+
+# Observations:
+# - **Missing Data**: A significant portion of the data is missing, with 68% of instances marked as `null`. This indicates that a large part of the `color` information is unavailable, which may require additional cleaning, maybe imputation strategies, to handle effectively.
+# - **Different Languages**: The `color` column includes color names in spanish, such as `Negro` (Spanish for black) and `Gris` (Spanish for gray), as well as English terms like `Carbon Black` and `Silver`. This inconsistency in language could lead to confusion in analysis or models, and standardizing the language or grouping similar colors may be beneficial.
+# - **Multiple Colors**: Some entries, like `Black/ Blue / Sandtone / Platinum` or `Multicolor`, represent multiple colors in a single field. These values may need to be split into individual colors or categorized into a broader "multicolor" group to maintain consistency and facilitate analysis.
+
+# In[40]:
 
 
 # List of valid color values for consistency checks
@@ -729,7 +871,7 @@ color_replace_map = {
 color_replace_map
 
 
-# In[33]:
+# In[41]:
 
 
 def clean_color(color: str, color_list: list = valid_color_values) -> str:
@@ -762,10 +904,10 @@ def clean_color(color: str, color_list: list = valid_color_values) -> str:
 # ### **Reformatting `color`:**
 # In this step of our analysis, we're focusing on cleaning up and standardizing the `color` data to ensure consistency and accuracy.
 # - **Translating from spanish to english:** We translate color names from Spanish to English to ensure that all color information is standardized, regardless of the language it was originally provided in.
-# - **Reducing color cardinality:** The color data may contain variations or inconsistencies in how colors are labeled (e.g., "multi-color" vs. "multicolor"). We address this by grouping similar colors under consistent labels, reducing the number of unique color categories.
+# - **Reducing color cardinality:** The color data may contain variations or inconsistencies in how colors are labeled (e.g., "multi-color" vs. "multicolor"). We address this by grouping similar colors under consistent labels, reducing the number of unique color categories. We also map color variations (e.g, "sky blue", "light blue") to a single color ("blue").
 # - **Standardizing format:** check whether the color listed for each item matches a set of predefined valid colors. Ensures that all color data follows a consistent format.
 
-# In[34]:
+# In[42]:
 
 
 # Creates an expression to search for valid colors
@@ -798,7 +940,7 @@ df.select(
 
 # We further inspect the original unique values of the `color` column, and its correspondent mapping in `color_clean`:
 
-# In[35]:
+# In[43]:
 
 
 # Taking a look at all the transformed color labels
