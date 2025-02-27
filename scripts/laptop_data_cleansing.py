@@ -929,7 +929,8 @@ df = df.with_columns(
         # If value is not multicolor nor a single color,then assign it to `other`
         .otherwise(pl.lit('other'))
     )
-    .str.replace('grey', 'gray') # Naturally, we need to map grey to gray (or vice versa) as it represents the same color
+    .str.replace('grey',
+                 'gray')  # Naturally, we need to map grey to gray (or vice versa) as it represents the same color
     .alias('manufacturer_color_clean')
 )
 
@@ -987,7 +988,8 @@ df = df.with_columns(
         # If value is not multicolor nor a single color,then assign it to `other`
         .otherwise(pl.lit('other'))
     )
-    .str.replace('grey', 'gray') # Naturally, we need to map grey to gray (or vice versa) as it represents the same color
+    .str.replace('grey',
+                 'gray')  # Naturally, we need to map grey to gray (or vice versa) as it represents the same color
     .alias('color_clean')
 )
 
@@ -1031,3 +1033,246 @@ df['color_clean'].value_counts(
 
 # Observations:
 # - **Lower cardinality and higher frequencies**: As a consequence of mapping colors into broader color categories and the rare category (`other`) the cardinality has decreased from more than 80 different colors to 20. This has also caused the increase in the proportion of several categories, such as `black` increasing from 15% to 19%.
+
+# ## Cleaning `type`
+
+# In[47]:
+
+
+df['type'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
+
+
+# In[48]:
+
+
+def map_type(type_str: str) -> str:
+    if type_str is None or type_str == "":  # Check for None or NaN (float type)
+        return 'unknown'
+
+    str_casefold = type_str.casefold()
+    if (
+            'netbook' in str_casefold or 'notebook' in str_casefold or 'laptop' in str_casefold or 'macbook' in str_casefold or 'thinkpad' in str_casefold
+            or 'chromebook' in str_casefold or 'ultrabook' in str_casefold):
+        return 'laptop'
+    if 'pc' in str_casefold or 'computer' in str_casefold:
+        return 'pc'
+    if 'tablet' in str_casefold:
+        return 'tablet'
+    return 'other'
+
+
+# In[49]:
+
+
+df = df.with_columns(
+    pl.col('type')
+    .map_elements(map_type, skip_nulls=False, return_dtype=pl.Utf8)  # Map the function to the 'Type' column
+    .alias('type_clean')  # Create the new column
+)
+
+
+# In[50]:
+
+
+df['type_clean'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
+
+
+# ## Cleaning `model`
+
+# In[51]:
+
+
+df = df.with_columns(
+    pl.col('model')
+    .str.to_lowercase()  # Convert the string to lowercase
+    .str.replace_all(r'\s+', '_')  # Replace spaces with underscores
+    .str.replace_all(r'[^a-z0-9_]', '')  # Remove non-alphanumeric characters (except underscores)
+    .alias('model_clean')  # Create a new column with the cleaned model names
+)
+
+df.select(
+    'model', 'model_clean'
+).head(n=10)
+
+
+# ## Cleaning `os`
+
+# In[52]:
+
+
+# Operating system value counts and their proportion.
+df['os'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
+
+
+# In[53]:
+
+
+# Define a function that maps the OS types based on the text
+def map_os_type(os: str) -> str:
+    if os is None or isinstance(os, float) or os == "":  # Check for None or NaN (float type)
+        return 'unknown'
+
+    str_casefold = os.casefold()
+
+    # Check for various OS types
+    if 'linux' in str_casefold or 'kali' in str_casefold or 'ubuntu' in str_casefold:
+        return 'linux'
+    elif 'window' in str_casefold or 'windows' in str_casefold or 'win' in str_casefold:
+        return 'windows'
+    elif 'chrome' in str_casefold:
+        return 'chrome'
+    elif 'android' in str_casefold:
+        return 'android'
+    elif 'mac' in str_casefold or 'macos' in str_casefold:
+        return 'mac'
+    else:
+        return 'other'
+
+
+# In[54]:
+
+
+df = df.with_columns(
+    pl.col("os")  # Select the OS column
+    .map_elements(map_os_type, skip_nulls=False, return_dtype=pl.Utf8)  # Apply the function using map_elements
+    .alias("os_clean")  # Create a new column with the mapped values
+)
+
+# Operating system cleaned value counts and their proportion.
+df['os_clean'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
+
+
+# ## Cleaning `country_region_of_manufacturer`
+# 
+# This variable represents country where the laptop was manufactured. As it is a string variable, it needs to be standardized and reformatted as required.
+# 
+# We'll start by taking a look at its value counts:
+
+# In[55]:
+
+
+# Country region of manufacturer value counts and their proportion.
+df['country_region_of_manufacturer'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
+
+
+# Observations:
+# - **Missing Data**: The `country_region_of_manufacturer` feature has a large proportion of missing values, with 6417 entries marked as `null`, representing 97% of the dataset. This significant amount of missing data should be addressed through imputation or exclusion strategies.
+# - **Concentration in Few Regions**: The majority of the values are concentrated in a small set of countries, with China being the most common, followed by the United States and Taiwan. This indicates that the data might be heavily skewed towards certain manufacturers. Other countries such as Japan, Ireland, and Australia have very few entries (less than 1% of the data), which suggests that these values are underrepresented and can be grouped into broader categories for analysis or modeling.
+# 
+
+# ### Reformatting `country_region_of_manufacturer`
+# We now proceed to reformat the `country_region_of_manufacturer` variable, by doing string operations (such as lowercasing, replacing all whitespaces with underscores) and assigning all `null` values to the `unknown` category.
+
+# In[56]:
+
+
+df = df.with_columns(
+    pl.col('country_region_of_manufacturer')
+    .str.to_lowercase()  # Convert all text to lowercase
+    .str.replace_all(r'\s+', '_')  # Replace all whitespaces with underscores
+    .fill_null('unknown')  # Replace null values with 'unknown'
+    .alias('country_of_manufacturer_clean')  # Save as a new column
+)
+
+df.select(
+    'country_region_of_manufacturer', 'country_of_manufacturer_clean'
+).unique(
+    subset='country_region_of_manufacturer'
+)
+
+
+# In[57]:
+
+
+# Country of manufacturer cleaned value counts and their proportion.
+df['country_of_manufacturer_clean'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
+
+
+# ## Cleaning `storage_type`
+
+# In[58]:
+
+
+df['storage_type'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
+
+
+# Observations:
+# - **Missing Data**: The `storage_type` column contains a significant number of missing values (`null_count = 4232`), representing 64% of the data.
+# - **Multiple Formats**: The data includes various representations for similar storage types (e.g., "SSD", "SSD (Solid State Drive)", "Solid State Drive"), which could lead to inconsistencies. These variations need to be standardized and grouped for better analysis and modeling.
+# - **Uncommon and Irrelevant Entries**: There are a few outlier values such as "Touchscreen", "256GBSSD", and "SSD or SSD", which seem irrelevant to the `storage_type` category. These should be reviewed and cleaned accordingly to ensure data quality.
+
+# In[59]:
+
+
+def map_storage_type(string: str) -> str:
+    if string is None or string == "":
+        return 'unknown'  # Handle None or empty strings before processing
+
+    # String suitable for caseless comparisons
+    str_casefold = string.casefold()
+
+    # Check if both 'ssd' and 'hdd' are present
+    if 'ssd' in str_casefold and 'hdd' in str_casefold:
+        return 'hdd_or_ssd'
+    # Check for 'ssd'
+    elif 'ssd' in str_casefold:
+        return 'ssd'
+    # Check for 'hdd'
+    elif 'hdd' in str_casefold:
+        return 'hdd'
+    # Check for 'emmc'
+    elif 'emmc' in str_casefold:
+        return 'emmc'
+    else:
+        return 'other'
+
+
+# In[60]:
+
+
+df = df.with_columns(
+    pl.col("storage_type")  # Select the storage_type column
+    .map_elements(map_storage_type, skip_nulls=False, return_dtype=pl.Utf8)  # Apply the function using map_elements
+    .alias("storage_type_clean")  # Create a new column with the mapped values
+)
+
+df['storage_type_clean'].value_counts(
+    sort=True,
+    parallel=True,
+)
+
