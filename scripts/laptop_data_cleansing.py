@@ -35,7 +35,7 @@
 # Importing libraries and setting constants
 
 import re
-from typing import Optional
+from typing import Optional, Tuple
 
 import polars as pl
 from polars import LazyFrame
@@ -1054,9 +1054,129 @@ df['color_clean'].value_counts(
 # Observations:
 # - **Lower cardinality and higher frequencies**: As a consequence of mapping colors into broader color categories and the rare category (`other`) the cardinality has decreased from more than 80 different colors to 20. This has also caused the increase in the proportion of several categories, such as `black` increasing from 15% to 19%.
 
-# ## Cleaning `gpu`
+# ## Cleaning `ram_size`, `ssd_capacity` & `hard_drive_capacity`
 
 # In[47]:
+
+
+def find_capacity(split_str: str, unit_match_str: str, unit_name: str) -> Tuple[Optional[float], str]:
+    try:
+        if unit_match_str in split_str:
+            capacity = re.sub('[a-z]', '', split_str[:split_str.find(unit_match_str)])
+            return float(capacity), unit_name
+        return None, unit_name
+    except ValueError:
+        return None, unit_name
+
+
+def clean_capacity_from_str(capacity: str) -> Tuple[Optional[float], str]:
+    # If capacity is none or a blank string
+    if capacity is None or not capacity.strip():
+        return None, 'unknown'
+
+    # String for caseless comparisons
+    capacity_casefold = capacity.casefold()
+    # Splitting the casefolded string
+    split_str = ''.join(capacity_casefold.split())
+
+    # Checks for gigabytes
+    if 'gb' in split_str:
+        return find_capacity(split_str=split_str, unit_match_str='gb', unit_name='gigabytes')
+    # Checks for terabytes
+    elif 'tb' in split_str:
+        capacity_in_tb = split_str[split_str.find('tb') - 1:split_str.find('tb')]
+        return float(capacity_in_tb), 'terabytes'
+    # Checks for megabytes
+    elif 'mb' in split_str:
+        return find_capacity(split_str=split_str, unit_match_str='mb', unit_name='megabytes')
+    # Checks for capacity values without a unit (e.g., '128', '389', or '128 SSD')
+    else:
+        # Remove alphabetic characters (like 'SSD') from the string
+        numeric_str = re.sub(r'[a-zA-Z]', '', split_str)
+
+        # Check if the remaining string is a valid number (integer or float)
+        is_numeric = re.match(r'^\d+(\.\d+)?$', numeric_str)
+
+        if is_numeric:
+            return float(numeric_str), 'unknown'
+    # Unspecified capacity nor unit
+    return None, 'unknown'
+
+
+def extract_capacity_value(capacity: str) -> float:
+    return clean_capacity_from_str(capacity)[0]
+
+
+def extract_capacity_unit(capacity: str) -> str:
+    return clean_capacity_from_str(capacity)[1]
+
+
+# In[48]:
+
+
+df = df.with_columns(
+    pl.col('hard_drive_capacity')
+    .str.to_lowercase()
+    .map_elements(function=extract_capacity_value, return_dtype=pl.Float64)
+    .alias('hard_drive_capacity_clean'),
+    pl.col('hard_drive_capacity')
+    .str.to_lowercase()
+    .map_elements(function=extract_capacity_unit, return_dtype=pl.String)
+    .alias('hard_drive_capacity_unit_clean')
+)
+
+df.select(
+    'hard_drive_capacity', 'hard_drive_capacity_clean', 'hard_drive_capacity_unit_clean'
+).unique(
+    subset='hard_drive_capacity'
+)
+
+
+# In[49]:
+
+
+df = df.with_columns(
+    pl.col('ram_size')
+    .str.to_lowercase()
+    .map_elements(function=extract_capacity_value, return_dtype=pl.Float64)
+    .alias('ram_size_clean'),
+    pl.col('ram_size')
+    .str.to_lowercase()
+    .map_elements(function=extract_capacity_unit, return_dtype=pl.String)
+    .alias('ram_size_unit_clean')
+)
+
+df.select(
+    'ram_size', 'ram_size_clean', 'ram_size_unit_clean'
+).unique(
+    subset='ram_size'
+)
+
+
+# In[50]:
+
+
+df = df.with_columns(
+    pl.col('ssd_capacity')
+    .str.to_lowercase()
+    .map_elements(function=extract_capacity_value, return_dtype=pl.Float64)
+    .alias('ssd_capacity_clean'),
+    pl.col('ssd_capacity')
+    .str.to_lowercase()
+    .map_elements(function=extract_capacity_unit, return_dtype=pl.String)
+    .alias('ssd_capacity_unit_clean')
+)
+
+df.select(
+    'ssd_capacity', 'ssd_capacity_clean', 'ssd_capacity_unit_clean'
+).unique(
+    subset='ssd_capacity'
+)
+
+
+# ## Cleaning `gpu`
+
+# In[51]:
 
 
 df['gpu'].value_counts(
@@ -1067,7 +1187,7 @@ df['gpu'].value_counts(
 )
 
 
-# In[48]:
+# In[52]:
 
 
 def map_gpu_type(gpu_str: str) -> str:
@@ -1115,14 +1235,142 @@ def map_gpu_type(gpu_str: str) -> str:
         return "other"
 
 
-# In[49]:
+# In[53]:
 
 
-df.with_columns(
+df = df.with_columns(
     pl.col("gpu")
     .map_elements(map_gpu_type, skip_nulls=False, return_dtype=pl.Utf8)
     .alias("gpu_type_clean")
-)['gpu_type_clean'].value_counts(sort=True)
+)
+
+df['gpu_type_clean'].value_counts(
+    sort=True,
+    parallel=True,
+)
+
+
+# ## Cleaning `processor_speed`
+
+# In[54]:
+
+
+df['processor_speed'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
+
+
+# In[55]:
+
+
+# Helper function to extract the processor speed unit (GHz, MHz, or unknown)
+def extract_processor_speed_unit(processor_speed: str) -> Optional[str]:
+    """
+    Extracts the unit (GHz, MHz, or 'unknown') from the processor speed string.
+
+    Args:
+        processor_speed (str): The processor speed string to process (e.g., '2.5 GHz', '2500 MHz').
+
+    Returns:
+        Optional[str]: The unit of the processor speed (GHz, MHz, or 'unknown').
+    """
+    # Null check to guard against None values
+    if processor_speed is None:
+        return 'unknown'
+
+    # String useful for caseless comparisons
+    processor_speed = processor_speed.casefold()
+
+    # Check for GHz or MHz
+    if 'ghz' in processor_speed:
+        return 'GHz'
+    elif 'mhz' in processor_speed:
+        return 'MHz'
+    else:
+        return 'unknown'
+
+
+# Helper function to extract the numeric value of the processor speed
+def extract_processor_speed_value(processor_speed: str) -> Optional[float]:
+    """
+    Extracts the numeric value of the processor speed from the string (e.g., '2.5 GHz' -> 2.5).
+
+    Args:
+        processor_speed (str): The processor speed string to process (e.g., '2.5 GHz', '2500 MHz').
+
+    Returns:
+        Optional[float]: The numeric value of the processor speed or None if invalid format.
+    """
+    if processor_speed is None:
+        return None
+
+    # Normalize the string by removing spaces and converting to lowercase
+    processor_speed = ''.join(processor_speed.split()).lower()
+
+    # Check if 'hz' is in the processor speed and extract the numeric value
+    if 'hz' in processor_speed:
+        # Remove spaces and check if the 'hz' is present
+        processor_speed = ''.join(processor_speed.split())  # Remove spaces
+
+        # Try to extract the numeric value by looking for the part before 'hz'
+        hz_index = processor_speed.find('hz')
+
+        # If there are enough characters before 'hz' (e.g., '2.5 GHz')
+        if hz_index - 5 < 0:
+            # Extract the part before 'hz'
+            number_part = processor_speed[:hz_index]
+        else:
+            # Extract 5 characters before 'hz' (to cover cases like '2500 MHz')
+            number_part = processor_speed[hz_index - 5:hz_index]
+
+        # Try to convert the extracted part to a float
+        try:
+            return float(number_part)
+        except ValueError:
+            return None
+    else:
+        return None
+
+
+# In[56]:
+
+
+df = df.with_columns(
+    # Extract the numeric value of the processor speed using regex
+    pl.col('processor_speed')
+    .str.extract(r"(\d+\.\d+|\d+)", group_index=1)  # Extract numeric value (e.g., 2.60 or 2)
+    .cast(pl.Float64)  # Convert the result to a float
+    .alias('processor_speed_clean'),
+    # Extract the unit of the processor speed (GHz, MHz, or unknown)
+    pl.col('processor_speed')
+    .map_elements(function=extract_processor_speed_unit, skip_nulls=False, return_dtype=pl.String)  # Extract unit part
+    .alias('processor_speed_unit_clean')
+)
+
+
+# In[57]:
+
+
+df['processor_speed_clean'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
+
+
+# In[58]:
+
+
+df['processor_speed_unit_clean'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
 
 
 # ## Cleaning `type`
@@ -1136,7 +1384,7 @@ df.with_columns(
 # 
 # Therefore, it is essential to clean this variable by *standardizing* the names, *handling missing values* & *grouping* similar types.
 
-# In[50]:
+# In[59]:
 
 
 df['type'].value_counts(
@@ -1153,7 +1401,7 @@ df['type'].value_counts(
 # - **Grouping similar types** into broader categories to ensure consistency and ease of analysis (e.g: `chromebook` and `notebooks` both get mapped to the general label `laptop`)).
 # 
 
-# In[51]:
+# In[60]:
 
 
 def map_type(type_str: str) -> str:
@@ -1213,7 +1461,7 @@ def map_type(type_str: str) -> str:
     return 'other'
 
 
-# In[52]:
+# In[61]:
 
 
 df = df.with_columns(
@@ -1223,7 +1471,7 @@ df = df.with_columns(
 )
 
 
-# In[53]:
+# In[62]:
 
 
 df['type_clean'].value_counts(
@@ -1242,7 +1490,7 @@ df['type_clean'].value_counts(
 
 # ## Cleaning `release_year`
 
-# In[54]:
+# In[63]:
 
 
 df['release_year'].value_counts(
@@ -1253,7 +1501,7 @@ df['release_year'].value_counts(
 )
 
 
-# In[55]:
+# In[64]:
 
 
 df = df.with_columns(
@@ -1264,7 +1512,7 @@ df = df.with_columns(
 )
 
 
-# In[56]:
+# In[65]:
 
 
 df['release_year_clean'].value_counts(
@@ -1277,7 +1525,7 @@ df['release_year_clean'].value_counts(
 
 # ## Cleaning `maximum_resolution`
 
-# In[57]:
+# In[66]:
 
 
 df['maximum_resolution'].value_counts(
@@ -1288,7 +1536,7 @@ df['maximum_resolution'].value_counts(
 )
 
 
-# In[58]:
+# In[67]:
 
 
 # Dictionary mapping resolution types to their corresponding width and height values
@@ -1337,7 +1585,7 @@ def try_get_resolution_value(resolution: str, resolution_dic: dict[str, list[str
     return 'unknown'
 
 
-# In[59]:
+# In[68]:
 
 
 def extract_width_from_resolution_str(resolution: str,
@@ -1379,7 +1627,7 @@ def extract_height_from_resolution_str(resolution: str,
     return try_get_resolution_value(resolution, resolution_dic, index=1)
 
 
-# In[60]:
+# In[69]:
 
 
 df = df.with_columns(
@@ -1402,7 +1650,7 @@ df = df.with_columns(
 )
 
 
-# In[61]:
+# In[70]:
 
 
 df['display_width_clean'].value_counts(
@@ -1413,7 +1661,7 @@ df['display_width_clean'].value_counts(
 )
 
 
-# In[62]:
+# In[71]:
 
 
 df['display_height_clean'].value_counts(
@@ -1430,7 +1678,7 @@ df['display_height_clean'].value_counts(
 # 
 # Hence, we clean and standardize these model names to ensure consistency and meaningful analysis.
 
-# In[63]:
+# In[72]:
 
 
 # Cleaning and standardizing the `model` variable
@@ -1460,7 +1708,7 @@ df.select(
 # 
 # We now proceed to take a further look at the value counts of the `os` variable:
 
-# In[64]:
+# In[73]:
 
 
 # Operating system value counts and their proportion.
@@ -1479,7 +1727,7 @@ df['os'].value_counts(
 
 # We now map the `os` variable to common categories: `linux`, `windows`, `chrome`, `android`, `mac` and `other`.
 
-# In[65]:
+# In[74]:
 
 
 # Define a function that maps the OS types based on the text
@@ -1535,7 +1783,7 @@ def map_os_type(os: str) -> str:
         return 'other'
 
 
-# In[66]:
+# In[75]:
 
 
 df = df.with_columns(
@@ -1559,7 +1807,7 @@ df['os_clean'].value_counts(
 # 
 # We'll start by taking a look at its value counts:
 
-# In[67]:
+# In[76]:
 
 
 # Country region of manufacturer value counts and their proportion.
@@ -1579,7 +1827,7 @@ df['country_region_of_manufacturer'].value_counts(
 # ### Reformatting `country_region_of_manufacturer`
 # We now proceed to reformat the `country_region_of_manufacturer` variable, by doing string operations (such as lowercasing, replacing all whitespaces with underscores) and assigning all `null` values to the `unknown` category.
 
-# In[68]:
+# In[77]:
 
 
 df = df.with_columns(
@@ -1597,7 +1845,7 @@ df.select(
 )
 
 
-# In[69]:
+# In[78]:
 
 
 # Country of manufacturer cleaned value counts and their proportion.
@@ -1621,7 +1869,7 @@ df['country_of_manufacturer_clean'].value_counts(
 # 
 # We are cleaning this variable to standardize the labels, group similar values, and handle missing or incorrectly formatted data. This will allow for more accurate analysis and ensure the column is more usable in subsequent processes.
 
-# In[70]:
+# In[79]:
 
 
 # Storage type value counts and their proportion.
@@ -1638,7 +1886,7 @@ df['storage_type'].value_counts(
 # - **Multiple Formats**: The data includes various representations for similar storage types (e.g., "SSD", "SSD (Solid State Drive)", "Solid State Drive"), which could lead to inconsistencies. These variations need to be standardized and grouped for better analysis and modeling.
 # - **Uncommon and Irrelevant Entries**: There are a few outlier values such as "Touchscreen", "256GBSSD", and "SSD or SSD", which seem irrelevant to the `storage_type` category. These should be reviewed and cleaned accordingly to ensure data quality.
 
-# In[71]:
+# In[80]:
 
 
 def map_storage_type(string: str) -> str:
@@ -1696,7 +1944,7 @@ def map_storage_type(string: str) -> str:
         return 'other'
 
 
-# In[72]:
+# In[81]:
 
 
 df = df.with_columns(
@@ -1712,7 +1960,7 @@ df.select(
 
 # Now we can analyze the value counts from our new `storage_type_clean` variable, expecting a big reduction in cardinality and a standard formatting for categorical labels.
 
-# In[73]:
+# In[82]:
 
 
 # Storage type cleaned value counts and their proportion.
