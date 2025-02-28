@@ -12,6 +12,23 @@
 # <img src="../assets/logos/ebay.png" width="250"/>
 # </div>
 
+# ## Loading Libraries
+# 
+# We are using **Polars** for data cleansing. Polars is a **fast**, ***parallel**, and **memory-efficient** DataFrame library written in *Rust*, designed for handling large datasets.
+# 
+# It provides intuitive API operations for data manipulation, such as filtering, grouping, joining, and transforming data, all in a very efficient manner. Unlike other popular libraries like Pandas, Polars is optimized for performance and can handle larger datasets with significantly faster execution times.
+# During the data cleaning process, we will leverage Polars to:
+# - Load and transform the data
+# - Clean and map columns based on custom logic
+# - Perform various aggregations and groupings
+# - Handle null values and ensure consistency across the dataset
+# 
+# Polars supports both eager and lazy execution modes, making it flexible for a variety of use cases.
+# 
+# <div style="text-align: center;">
+# <img src="../assets/logos/polars.png"/>
+# </div>
+
 # In[1]:
 
 
@@ -185,7 +202,7 @@ is_a_top_brand_string_pattern = "|".join(re.escape(color) for color in top_brand
 
 
 # Function to extract the actual brand from a string.
-def return_actual_brand_from_string(string: str, brand_list: list[str] = top_brands) -> str:
+def fetch_first_matching_brand_from_str(string: str, brand_list: list[str] = top_brands) -> str:
     """
     Extracts the first matching brand from a given string.
 
@@ -211,7 +228,7 @@ df = df.with_columns(
         ~pl.col('brand_clean').str.contains('_or_')
     )
     # If the condition is met, map the brand name to its standardized version.
-    .then(pl.col('brand_clean').map_elements(return_actual_brand_from_string, return_dtype=pl.Utf8))
+    .then(pl.col('brand_clean').map_elements(fetch_first_matching_brand_from_str, return_dtype=pl.Utf8))
     # Otherwise, keep the original brand name.
     .otherwise(pl.col('brand_clean'))
     # Rename the transformed column as 'brand_clean'.
@@ -474,7 +491,7 @@ condition_replace_map = {
 
 
 # Creating a function to map condition values to a condition dictionary, which represents labels (e.g: `New`) as keys and description as values (e.g: `A brand-new, unused item...`).
-def map_condition(value, condition_dict=condition_replace_map):
+def map_condition(value: str, condition_dict: dict[str, str] = condition_replace_map) -> tuple[str, str]:
     """
     Maps a given condition string to a predefined label and its corresponding description.
 
@@ -878,7 +895,7 @@ color_replace_map
 # In[41]:
 
 
-def clean_color(color: str, color_list: list = valid_color_values) -> str:
+def clean_color(color: str, color_list: list[str] = valid_color_values) -> str:
     """
     Cleans the input color string by categorizing it based on the presence of valid colors.
 
@@ -1035,6 +1052,15 @@ df['color_clean'].value_counts(
 # - **Lower cardinality and higher frequencies**: As a consequence of mapping colors into broader color categories and the rare category (`other`) the cardinality has decreased from more than 80 different colors to 20. This has also caused the increase in the proportion of several categories, such as `black` increasing from 15% to 19%.
 
 # ## Cleaning `type`
+# 
+# The `type` variable represents the specific type of laptop, such as notebook, ultrabook, 2-in-1, gaming laptop, etc. It is a categorical variable that helps categorize laptops based on their physical design, usage, or form factor.
+# 
+# The main issues with this variable are:
+# - **Inconsistent format**: The values in the `type` column may not follow a consistent format or include variations in the naming convention (e.g., `Notebook` vs `notebook` or `Ultrabook` vs `ultrabook`).
+# - **Missing Data**: Like many other columns, the `type` column may also contain missing or null values, which need to be handled.
+# - **Ambiguity and Overlap**: Some types may overlap or be ambiguous (e.g., laptops that could be classified as both a `notebook` and `ultrabook`), leading to potential confusion or misclassification.
+# 
+# Therefore, it is essential to clean this variable by *standardizing* the names, *handling missing values* & *grouping* similar types.
 
 # In[47]:
 
@@ -1047,22 +1073,69 @@ df['type'].value_counts(
 )
 
 
+# We will clean the variable as aforementioned, by:
+# - **Standardizing** the names (e.g., converting everything to `lowercase`, trimming, removing whitespaces).
+# - **Handling missing values** (e.g., by imputing or categorizing them as 'unknown').
+# - **Grouping similar types** into broader categories to ensure consistency and ease of analysis (e.g: `chromebook` and `notebooks` both get mapped to the general label `laptop`)).
+# 
+
 # In[48]:
 
 
 def map_type(type_str: str) -> str:
-    if type_str is None or type_str == "":  # Check for None or NaN (float type)
+    """
+    Maps the input string representing the type of device to a standard category.
+
+    The function processes the input string to determine the device type based on the following categories:
+    - 'laptop' if any of the terms related to laptops are found (e.g., 'netbook', 'notebook', 'laptop', 'macbook', etc.).
+    - 'pc' if any of the terms related to personal computers are found (e.g., 'pc', 'computer').
+    - 'tablet' if the string mentions 'tablet'.
+    - 'other' for any other cases or unrecognized device types.
+
+    If the input string is None, empty, or contains no recognizable device type, the function returns 'unknown'.
+
+    Args:
+        type_str (str): The device type string to be processed.
+
+    Returns:
+        str: A standardized device type category.
+
+    Example Usage:
+    --------------
+    >>> map_type("Macbook Pro 16")
+    'laptop'
+
+    >>> map_type("Desktop PC")
+    'pc'
+
+    >>> map_type("Samsung Tablet")
+    'tablet'
+
+    >>> map_type("Unknown Device")
+    'other'
+
+    >>> map_type(None)
+    'unknown'
+
+    >>> map_type("")
+    'unknown'
+    """
+    if type_str is None or type_str == "":  # Check for None or blank
         return 'unknown'
 
     str_casefold = type_str.casefold()
-    if (
-            'netbook' in str_casefold or 'notebook' in str_casefold or 'laptop' in str_casefold or 'macbook' in str_casefold or 'thinkpad' in str_casefold
-            or 'chromebook' in str_casefold or 'ultrabook' in str_casefold):
+
+    laptops = ('netbook', 'notebook', 'laptop', 'macbook', 'thinkpad', 'chromebook', 'ultrabook')
+    if any(laptop in str_casefold for laptop in laptops):
         return 'laptop'
-    if 'pc' in str_casefold or 'computer' in str_casefold:
+
+    computers = ('pc', 'computer')
+    if any(pc in str_casefold for pc in computers):
         return 'pc'
+
     if 'tablet' in str_casefold:
         return 'tablet'
+
     return 'other'
 
 
@@ -1087,11 +1160,22 @@ df['type_clean'].value_counts(
 )
 
 
+# Observations:
+# - **Missing Data**: 50% of the data was missing, now mapped to `unknown`, making the dataset more consistent.
+# - **Consolidation**: Similar types like `Notebook`, `Laptop`, and `Pc Portable` were grouped into broader categories like `laptop` and `pc`, reducing noise. Similarly, rare categories were mapped to the `other` label.
+# - **Dominant Categories**: The majority of the data now falls into `laptop` (44%), with `unknown` (50%) remaining the largest category due to missing values. Both these categories contain more than 90% of the data.
+# 
+
 # ## Cleaning `model`
+# 
+# The `model` column represents the specific model name or number of the laptop. This could include a combination of words, numbers, and special characters that uniquely identify each laptop model. These values typically provide detailed information about the device, such as the brand, series, generation, and specifications. However, it is essential to understand the structure and characteristics of the data before cleaning it.
+# 
+# Hence, we clean and standardize these model names to ensure consistency and meaningful analysis.
 
 # In[51]:
 
 
+# Cleaning and standardizing the `model` variable
 df = df.with_columns(
     pl.col('model')
     .str.to_lowercase()  # Convert the string to lowercase
@@ -1106,6 +1190,17 @@ df.select(
 
 
 # ## Cleaning `os`
+# 
+# #### What does it represent?
+# The `os` column represents the operating system installed on the device. This could include common OS types such as `Windows`, `macOS`, `Linux`, `ChromeOS`, and `Android`.
+# 
+# #### What is wrong with it?
+# - **Inconsistent formatting**: Some values might be uppercase, lowercase, or a mix.
+# - **Synonyms and variations**: For example, `"Windows 10"`, `"Win 10"`, and `"Windows10"` should all be grouped under `Windows`.
+# - **Noisy or irrelevant values**: Some entries might not be valid OS names (e.g., `"See Description"`, `"N/A"`, or random text).
+# - **Null values**: Devices with no recorded `os`
+# 
+# We now proceed to take a further look at the value counts of the `os` variable:
 
 # In[52]:
 
@@ -1119,11 +1214,49 @@ df['os'].value_counts(
 )
 
 
+# Observations:
+# - **Missing Data**: A significant portion of the data is missing, with 54% of instances marked as `null`. This indicates that more than half of the `os` information is unavailable, which will require appropriate handling, such as imputing missing values with an `'unknown'` category or further investigation into why the data is missing.
+# - **Multiple Variations**: The `os` column contains several variations of the same operating system name, such as `Windows 10 Pro`, `Windows 10`, `Windows 10 Pros`, `Windows 11 Pro`, and `Windows 11 Home`. These should be standardized and mapped to a common label, such as `Windows 10` and `Windows 11` or even `Windows`, in order to reduce redundancy and ensure consistency.
+# - **Inconsistent Labels**: Entries like `Not Included` or `null` indicate missing or unspecified data that should be grouped as `unknown`. These values should be mapped to a uniform label that indicates the absence of OS information.
+
+# We now map the `os` variable to common categories: `linux`, `windows`, `chrome`, `android`, `mac` and `other`.
+
 # In[53]:
 
 
 # Define a function that maps the OS types based on the text
 def map_os_type(os: str) -> str:
+    """
+    Maps a given operating system string to a predefined category.
+
+    The function checks for various operating system names within the input string
+    and returns a simplified category. It handles different variations of OS names
+    and returns an 'unknown' category for missing or non-recognized values.
+
+    Parameters:
+    os (str): The input string representing the operating system. This can include
+              different OS names such as 'Windows', 'Linux', 'macOS', etc.
+
+    Returns:
+    str: A standardized operating system category. Possible categories include:
+         'linux', 'windows', 'chrome', 'android', 'mac', 'other', 'unknown'.
+
+    Example:
+    >>> map_os_type("Windows 10 Pro")
+    'windows'
+
+    >>> map_os_type("Ubuntu 20.04")
+    'linux'
+
+    >>> map_os_type("Android 11")
+    'android'
+
+    >>> map_os_type(None)
+    'unknown'
+
+    >>> map_os_type("Not Included")
+    'unknown'
+    """
     if os is None or isinstance(os, float) or os == "":  # Check for None or NaN (float type)
         return 'unknown'
 
@@ -1219,10 +1352,21 @@ df['country_of_manufacturer_clean'].value_counts(
 
 
 # ## Cleaning `storage_type`
+# 
+# The `storage_type` column represents the type of storage technology used in the device, such as `HDD`, `SSD`, `eMMC`, or others. This variable typically helps identify the technology driving the device's storage and its performance characteristics.
+# 
+# Possible values in the `storage_type` column include:
+# - **Standard Storage Types**: Entries like `HDD` (Hard Disk Drive), `SSD` (Solid State Drive), `eMMC` (Embedded MultiMedia Card), and `NVMe`, which are the common and widely recognized storage technologies in laptops.
+# - **Inconsistent Labels**: Variations in naming conventions, such as `SSD` being labeled as `solid state drive`, or `HDD` being labeled as `Hard Disk` or `hard disk drive`, could create redundancy and inconsistency.
+# - **Multiple Values**: Some entries might combine multiple storage types, such as `SSD/HDD` or `HDD+SSD`, making it harder to categorize them properly.
+# - **Missing or Placeholder Data**: Missing values or incorrect placeholders like `null` or `unknown` could be present, which would need to be remapped or cleaned.
+# 
+# We are cleaning this variable to standardize the labels, group similar values, and handle missing or incorrectly formatted data. This will allow for more accurate analysis and ensure the column is more usable in subsequent processes.
 
 # In[58]:
 
 
+# Storage type value counts and their proportion.
 df['storage_type'].value_counts(
     sort=True,
     parallel=True,
@@ -1240,22 +1384,54 @@ df['storage_type'].value_counts(
 
 
 def map_storage_type(string: str) -> str:
+    """
+    Maps the input string representing a storage type to a standard category.
+
+    The function processes the input string to determine the storage type based on categories: `hdd_or_ssd`, `ssd`, `hdd`, `emmc`, `other`, `unknown` etc.
+
+    If the input string is None, empty, or contains no recognizable storage type, the function returns `unknown`.
+
+    Args:
+        string (str): The storage type string to be processed.
+
+    Returns:
+        str: A standardized storage type category.
+
+    Usage:
+    --------------
+    >>> map_storage_type("Samsung SSD 256GB")
+    'ssd'
+
+    >>> map_storage_type("Seagate HDD 1TB")
+    'hdd'
+
+    >>> map_storage_type("Intel SSD + HDD")
+    'hdd_or_ssd'
+
+    >>> map_storage_type("SanDisk eMMC")
+    'emmc'
+
+    >>> map_storage_type("Unknown Storage")
+    'other'
+
+    >>> map_storage_type(None)
+    'unknown'
+
+    >>> map_storage_type("")
+    'unknown'
+    """
     if string is None or string == "":
         return 'unknown'  # Handle None or empty strings before processing
 
     # String suitable for caseless comparisons
     str_casefold = string.casefold()
 
-    # Check if both 'ssd' and 'hdd' are present
     if 'ssd' in str_casefold and 'hdd' in str_casefold:
         return 'hdd_or_ssd'
-    # Check for 'ssd'
     elif 'ssd' in str_casefold:
         return 'ssd'
-    # Check for 'hdd'
     elif 'hdd' in str_casefold:
         return 'hdd'
-    # Check for 'emmc'
     elif 'emmc' in str_casefold:
         return 'emmc'
     else:
@@ -1271,8 +1447,27 @@ df = df.with_columns(
     .alias("storage_type_clean")  # Create a new column with the mapped values
 )
 
+df.select(
+    'storage_type', 'storage_type_clean'
+).head(n=10)
+
+
+# Now we can analyze the value counts from our new `storage_type_clean` variable, expecting a big reduction in cardinality and a standard formatting for categorical labels.
+
+# In[61]:
+
+
+# Storage type cleaned value counts and their proportion.
 df['storage_type_clean'].value_counts(
     sort=True,
     parallel=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
 )
 
+
+# Observations:
+# - **Missing Data**: A significant portion of the data, 61.6%, is marked as `unknown`, which indicates that a large number of storage types are missing or not provided. This missing data may require further investigation or imputation to handle effectively.
+# - **Dominant Category**: The most frequent category is `ssd` (35.6%), which suggests that SSD is the predominant storage technology in the dataset, reflecting the growing trend of SSD usage in modern devices.
+# - **Reduced cardinality**: Cardinality was reduced from 45 different unique values to 6.
+# - **Minor Categories**: The categories `other` (0.01) and `hdd_or_ssd` (0.01) are very small, suggesting that these cases are very uncommon in the dataset.
