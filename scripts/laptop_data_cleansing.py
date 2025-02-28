@@ -33,9 +33,12 @@
 
 
 # Importing libraries and setting constants
+
+import re
+from typing import Optional
+
 import polars as pl
 from polars import LazyFrame
-import re
 
 # Data source location
 DATA_SOURCE_PATH = '../data/ebay_laptops_and_notebooks.csv'
@@ -1051,6 +1054,77 @@ df['color_clean'].value_counts(
 # Observations:
 # - **Lower cardinality and higher frequencies**: As a consequence of mapping colors into broader color categories and the rare category (`other`) the cardinality has decreased from more than 80 different colors to 20. This has also caused the increase in the proportion of several categories, such as `black` increasing from 15% to 19%.
 
+# ## Cleaning `gpu`
+
+# In[47]:
+
+
+df['gpu'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
+
+
+# In[48]:
+
+
+def map_gpu_type(gpu_str: str) -> str:
+    """
+    Maps GPU names to broader categories based on brand.
+
+    - 'intel' if the GPU name contains 'intel'.
+    - 'amd' if the GPU name contains 'amd' or 'radeon'.
+    - 'nvidia' if the GPU name contains 'nvidia' or 'geforce'.
+    - 'mali' if the GPU name contains 'mali'.
+    - 'other' for unknown or unclassified GPU names.
+
+    Args:
+        gpu_str (str): The GPU name.
+
+    Returns:
+        str: Mapped GPU category.
+
+    Examples:
+        >>> map_gpu_type("Intel UHD Graphics")
+        'intel'
+        >>> map_gpu_type("AMD Radeon RX 6800")
+        'amd'
+        >>> map_gpu_type("NVIDIA GeForce RTX 3080")
+        'nvidia'
+        >>> map_gpu_type("ARM Mali-G76")
+        'mali'
+        >>> map_gpu_type("Unknown GPU")
+        'other'
+    """
+    if gpu_str is None or gpu_str == "":
+        return "unknown"
+
+    str_casefold = gpu_str.casefold()
+
+    if "intel" in str_casefold:
+        return "intel"
+    elif "amd" in str_casefold or "radeon" in str_casefold:
+        return "amd"
+    elif "nvidia" in str_casefold or "geforce" in str_casefold:
+        return "nvidia"
+    elif "mali" in str_casefold:
+        return "mali"
+    else:
+        return "other"
+
+
+# In[49]:
+
+
+df.with_columns(
+    pl.col("gpu")
+    .map_elements(map_gpu_type, skip_nulls=False, return_dtype=pl.Utf8)
+    .alias("gpu_type_clean")
+)['gpu_type_clean'].value_counts(sort=True)
+
+
 # ## Cleaning `type`
 # 
 # The `type` variable represents the specific type of laptop, such as notebook, ultrabook, 2-in-1, gaming laptop, etc. It is a categorical variable that helps categorize laptops based on their physical design, usage, or form factor.
@@ -1062,7 +1136,7 @@ df['color_clean'].value_counts(
 # 
 # Therefore, it is essential to clean this variable by *standardizing* the names, *handling missing values* & *grouping* similar types.
 
-# In[47]:
+# In[50]:
 
 
 df['type'].value_counts(
@@ -1079,7 +1153,7 @@ df['type'].value_counts(
 # - **Grouping similar types** into broader categories to ensure consistency and ease of analysis (e.g: `chromebook` and `notebooks` both get mapped to the general label `laptop`)).
 # 
 
-# In[48]:
+# In[51]:
 
 
 def map_type(type_str: str) -> str:
@@ -1139,7 +1213,7 @@ def map_type(type_str: str) -> str:
     return 'other'
 
 
-# In[49]:
+# In[52]:
 
 
 df = df.with_columns(
@@ -1149,7 +1223,7 @@ df = df.with_columns(
 )
 
 
-# In[50]:
+# In[53]:
 
 
 df['type_clean'].value_counts(
@@ -1166,13 +1240,197 @@ df['type_clean'].value_counts(
 # - **Dominant Categories**: The majority of the data now falls into `laptop` (44%), with `unknown` (50%) remaining the largest category due to missing values. Both these categories contain more than 90% of the data.
 # 
 
+# ## Cleaning `release_year`
+
+# In[54]:
+
+
+df['release_year'].value_counts(
+    sort=True,
+    parallel=True
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
+
+
+# In[55]:
+
+
+df = df.with_columns(
+    pl.col("release_year")
+    .str.extract(r"\b(20[0-2][0-9]|200[0-9])\b")  # Extracts valid years (2000-2024)
+    .cast(pl.Int64)  # Convert to integer
+    .alias("release_year_clean")
+)
+
+
+# In[56]:
+
+
+df['release_year_clean'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
+
+
+# ## Cleaning `maximum_resolution`
+
+# In[57]:
+
+
+df['maximum_resolution'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
+
+
+# In[58]:
+
+
+# Dictionary mapping resolution types to their corresponding width and height values
+resolution_replace_map = {
+    'full hd': ['1920', '1080'],
+    'hd': ['1280', '720'],
+    '2k': ['2048', '1080'],
+    '4k': ['3840', '2160']
+}
+
+
+def try_get_resolution_value(resolution: str, resolution_dic: dict[str, list[str]], index: int) -> Optional[str]:
+    """
+    Helper function to retrieve the width or height from the resolution dictionary or the 'width x height' format.
+
+    Args:
+        resolution (str): The resolution string to process (e.g., '1920x1080', 'full hd').
+        resolution_dic (dict): A dictionary mapping resolution names to their respective width and height.
+        index (int): The index (0 for width, 1 for height) to retrieve from the dictionary.
+
+    Returns:
+        Optional[str]: The width or height of the resolution as a string, or None if no valid resolution can be extracted.
+    """
+    # Null check to guard against None values
+    if resolution is None:
+        return None
+
+    # Normalize the resolution string by removing spaces and converting to lowercase
+    resolution = ''.join(resolution.split()).lower()
+
+    # Check if the resolution matches one of the predefined names in the dictionary
+    if resolution in resolution_dic:
+        return resolution_dic[resolution][index]
+
+    # Check if the resolution contains 'k' and is in the dictionary (e.g., '4k')
+    elif 'k' in resolution and resolution in resolution_dic:
+        return resolution_dic[resolution][index]
+
+    # Check if the resolution is in the format 'width x height'
+    elif 'x' in resolution:
+        parts = resolution.split('x')
+        if len(parts) == 2:
+            # Return the corresponding part (width or height) based on the index
+            return re.sub("[a-z()]", '', parts[index]).strip()
+
+    return 'unknown'
+
+
+# In[59]:
+
+
+def extract_width_from_resolution_str(resolution: str,
+                                      resolution_dic: dict[str, list[str]] = resolution_replace_map) -> Optional[str]:
+    """
+    Extract the width of a display from a resolution string.
+
+    Uses the helper function to retrieve the width from the resolution dictionary or from the 'width x height' format.
+
+    Args:
+        resolution (str): The resolution string to process (e.g., '1920x1080', 'full hd').
+        resolution_dic (dict, optional): A dictionary mapping resolution names to their respective width and height.
+                                         Defaults to `resolution_replace_map`.
+
+    Returns:
+        Optional[str]: The width of the resolution as a string, or None if no valid resolution can be extracted.
+    """
+
+    # Try getting the width using the helper function
+    return try_get_resolution_value(resolution, resolution_dic, index=0)
+
+
+def extract_height_from_resolution_str(resolution: str,
+                                       resolution_dic: dict[str, list[str]] = resolution_replace_map) -> Optional[str]:
+    """
+    Extract the height of a display from a resolution string.
+
+    Uses the helper function to retrieve the height from the resolution dictionary or from the 'width x height' format.
+
+    Args:
+        resolution (str): The resolution string to process (e.g., '1920x1080', 'full hd').
+        resolution_dic (dict, optional): A dictionary mapping resolution names to their respective width and height.
+                                         Defaults to `resolution_replace_map`.
+
+    Returns:
+        Optional[str]: The height of the resolution as a string, or None if no valid resolution can be extracted.
+    """
+    # Try getting the height using the helper function
+    return try_get_resolution_value(resolution, resolution_dic, index=1)
+
+
+# In[60]:
+
+
+df = df.with_columns(
+    # Transform the 'maximum_resolution' column to extract the display width
+    pl.col('maximum_resolution')
+    .str.to_lowercase()  # Convert the resolution string to lowercase for uniformity
+    .map_elements(function=extract_width_from_resolution_str, skip_nulls=False,
+                  return_dtype=pl.String)  # Apply the width extraction function
+    .cast(dtype=pl.Int64, strict=False)  # Cast the result to an integer type
+    .shrink_dtype()  # Shrink the data type to the smallest possible type to save memory (if applicable)
+    .alias('display_width_clean'),
+    # Transform the 'maximum_resolution' column to extract the display height
+    pl.col('maximum_resolution')
+    .str.to_lowercase()  # Convert the resolution string to lowercase for uniformity
+    .map_elements(function=extract_height_from_resolution_str, skip_nulls=False,
+                  return_dtype=pl.String)  # Apply the height extraction function
+    .cast(dtype=pl.Int64, strict=False)  # Cast the result to an integer type
+    .shrink_dtype()  # Shrink the data type to the smallest possible type to save memory (if applicable)
+    .alias('display_height_clean')
+)
+
+
+# In[61]:
+
+
+df['display_width_clean'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
+
+
+# In[62]:
+
+
+df['display_height_clean'].value_counts(
+    sort=True,
+    parallel=True,
+).with_columns(
+    (pl.col('count') / df.height).round(2).alias('proportion')
+)
+
+
 # ## Cleaning `model`
 # 
 # The `model` column represents the specific model name or number of the laptop. This could include a combination of words, numbers, and special characters that uniquely identify each laptop model. These values typically provide detailed information about the device, such as the brand, series, generation, and specifications. However, it is essential to understand the structure and characteristics of the data before cleaning it.
 # 
 # Hence, we clean and standardize these model names to ensure consistency and meaningful analysis.
 
-# In[51]:
+# In[63]:
 
 
 # Cleaning and standardizing the `model` variable
@@ -1202,7 +1460,7 @@ df.select(
 # 
 # We now proceed to take a further look at the value counts of the `os` variable:
 
-# In[52]:
+# In[64]:
 
 
 # Operating system value counts and their proportion.
@@ -1221,7 +1479,7 @@ df['os'].value_counts(
 
 # We now map the `os` variable to common categories: `linux`, `windows`, `chrome`, `android`, `mac` and `other`.
 
-# In[53]:
+# In[65]:
 
 
 # Define a function that maps the OS types based on the text
@@ -1277,7 +1535,7 @@ def map_os_type(os: str) -> str:
         return 'other'
 
 
-# In[54]:
+# In[66]:
 
 
 df = df.with_columns(
@@ -1301,7 +1559,7 @@ df['os_clean'].value_counts(
 # 
 # We'll start by taking a look at its value counts:
 
-# In[55]:
+# In[67]:
 
 
 # Country region of manufacturer value counts and their proportion.
@@ -1321,7 +1579,7 @@ df['country_region_of_manufacturer'].value_counts(
 # ### Reformatting `country_region_of_manufacturer`
 # We now proceed to reformat the `country_region_of_manufacturer` variable, by doing string operations (such as lowercasing, replacing all whitespaces with underscores) and assigning all `null` values to the `unknown` category.
 
-# In[56]:
+# In[68]:
 
 
 df = df.with_columns(
@@ -1339,7 +1597,7 @@ df.select(
 )
 
 
-# In[57]:
+# In[69]:
 
 
 # Country of manufacturer cleaned value counts and their proportion.
@@ -1363,7 +1621,7 @@ df['country_of_manufacturer_clean'].value_counts(
 # 
 # We are cleaning this variable to standardize the labels, group similar values, and handle missing or incorrectly formatted data. This will allow for more accurate analysis and ensure the column is more usable in subsequent processes.
 
-# In[58]:
+# In[70]:
 
 
 # Storage type value counts and their proportion.
@@ -1380,7 +1638,7 @@ df['storage_type'].value_counts(
 # - **Multiple Formats**: The data includes various representations for similar storage types (e.g., "SSD", "SSD (Solid State Drive)", "Solid State Drive"), which could lead to inconsistencies. These variations need to be standardized and grouped for better analysis and modeling.
 # - **Uncommon and Irrelevant Entries**: There are a few outlier values such as "Touchscreen", "256GBSSD", and "SSD or SSD", which seem irrelevant to the `storage_type` category. These should be reviewed and cleaned accordingly to ensure data quality.
 
-# In[59]:
+# In[71]:
 
 
 def map_storage_type(string: str) -> str:
@@ -1438,7 +1696,7 @@ def map_storage_type(string: str) -> str:
         return 'other'
 
 
-# In[60]:
+# In[72]:
 
 
 df = df.with_columns(
@@ -1454,7 +1712,7 @@ df.select(
 
 # Now we can analyze the value counts from our new `storage_type_clean` variable, expecting a big reduction in cardinality and a standard formatting for categorical labels.
 
-# In[61]:
+# In[73]:
 
 
 # Storage type cleaned value counts and their proportion.
