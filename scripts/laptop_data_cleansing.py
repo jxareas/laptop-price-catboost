@@ -29,13 +29,13 @@
 # <img src="../assets/logos/polars.png"/>
 # </div>
 
-# In[176]:
+# In[ ]:
 
 
 # Importing libraries and setting constants
 
 import re
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Callable, Any
 
 import polars as pl
 from polars import LazyFrame
@@ -46,7 +46,7 @@ DATA_SOURCE_PATH = '../data/ebay_laptops_and_notebooks.csv'
 
 # ## Data Exploration
 
-# In[177]:
+# In[ ]:
 
 
 # Loading the dataset
@@ -66,7 +66,7 @@ df.head(n=10)
 # 
 # We compute the summary statistics for our dataset, but we instantly notice most of our columns are nullable, which makes statistics, such as the mean and standard deviation, to output `null` too.
 
-# In[178]:
+# In[ ]:
 
 
 # Summary statistics
@@ -77,7 +77,7 @@ df.describe()
 # 
 # Now, we take a look at the `null count` and `null proportion` per each dataframe column:
 
-# In[179]:
+# In[ ]:
 
 
 # Nulls per each column in the dataset
@@ -100,7 +100,7 @@ df.null_count().unpivot(
 # 
 # We look at each column data type in the data frame
 
-# In[180]:
+# In[ ]:
 
 
 # Data Types
@@ -118,7 +118,7 @@ pl.DataFrame(data={
 # 
 # We kick things off by *reformatting* the column names: lowercasing and removing spaces for underscores. These convention for string data will be **STANDARD** during our data cleansing process, so that most categorical data is transformed into similar formatting.
 
-# In[181]:
+# In[ ]:
 
 
 # Renaming columns: replacing blank spaces for underscores and lowercasing columns
@@ -128,7 +128,7 @@ print(df.columns)
 
 # ## Utility Functions
 
-# In[182]:
+# In[ ]:
 
 
 def value_counts_with_proportion(dataframe: pl.DataFrame,
@@ -198,7 +198,7 @@ def value_counts_with_proportion(dataframe: pl.DataFrame,
 # - **Inconsistent formatting**: Some entries like `Dell Inc` are not captured under the main brand `Dell` due to inconsistent formatting. Similar things occur to other top brands.
 # - **Multibrand categories**: Some entries represent several brands, like `Dell / HP / Lenovo` or `Apple / LG`
 
-# In[183]:
+# In[ ]:
 
 
 # Taking a look at the frequency of each brand: total count and proportion
@@ -213,7 +213,7 @@ value_counts_with_proportion(dataframe=df, col='brand')
 # - **Replacing Uncertain Values:** We also handle special cases where the data might have uncertain or irrelevant values (e.g., a "?" for unknown brands), replacing them with more meaningful terms like "unbranded" or "unknown."
 # 
 
-# In[184]:
+# In[ ]:
 
 
 # Define a mapping to replace certain placeholder values with more meaningful labels.
@@ -247,7 +247,7 @@ df = df.with_columns(
 # By applying these steps, we ensure that any variations or inconsistencies in the brand names are correctly mapped to the top brands, improving the consistency and accuracy of our analysis.
 # 
 
-# In[185]:
+# In[ ]:
 
 
 # Identify the top 5 most frequent brands in the dataset.
@@ -300,7 +300,7 @@ df = df.with_columns(
 )
 
 
-# In[186]:
+# In[ ]:
 
 
 # Taking another look at the frequency of each brand: total count and proportion
@@ -317,7 +317,7 @@ value_counts_with_proportion(dataframe=df, col='brand_clean')
 # - **Inconsistent format**: The cost of a laptop might be fixed (e.g: `880`) or a range (e.g: `from 500 to 999`)
 # - **Bad typing**: `price` is currently a categorical (`String`) variable, due to commas, whitespaces and symbols. To use this data effectively for statistical models, we **MUST CONVERT** it into **NUMERICAL**, removing currency symbols and handling text-based variations like ranges.
 
-# In[187]:
+# In[ ]:
 
 
 # Taking a look at the first 5 records from the `price` column, as is
@@ -337,7 +337,7 @@ df['price'].head(n=10)
 # - **Ensuring Proper Data Types:** After cleaning, we cast the extracted price values to `Float64`, making them compatible with statistical models and numerical computations.
 # 
 
-# In[188]:
+# In[ ]:
 
 
 df = df.with_columns(
@@ -362,7 +362,7 @@ df.select(
 
 # ## Cleaning `rating` & `ratings_count`
 
-# In[189]:
+# In[ ]:
 
 
 # Taking a look at the frequency of each rating: total count and proportion
@@ -374,7 +374,7 @@ value_counts_with_proportion(dataframe=df, col='rating')
 # - **Strong positive bias**: Ratings are overwhelmingly positive, with **5 out of 5 stars (2%)** and **4.5 out of 5 stars (2%)** making up nearly all non-null values. Only **5 instances** have ratings of **3 stars or lower**, making it difficult to assess dissatisfaction trends.
 # - **Possible numerical conversion**: The `rating` column is currently a String but can be converted into an `Int` **five_star_scale** variable for analysis.
 
-# In[190]:
+# In[ ]:
 
 
 # Taking a look at the frequency of each rating count: total count and proportion
@@ -389,7 +389,7 @@ value_counts_with_proportion(dataframe=df, col='ratings_count')
 # 
 # In this step, we transform the `rating` variable to variable `five_star_scale_rating` ( which, as its name implies, is a numerical variable ranging from 1-5; representing the product rating on a five-star scale) as well as clean its format (replacing spaces / decimal points with underscores) and assign the result to `rating_clean`.
 
-# In[191]:
+# In[ ]:
 
 
 # Define the regex pattern for extracting numeric values (including decimals)
@@ -420,7 +420,7 @@ df = df.with_columns(
 
 # Now, we inspect our newly created `rating_clean` & `five_star_scale_rating_clean` variables, and compare them to the original `rating` variable
 
-# In[192]:
+# In[ ]:
 
 
 rating_columns = ('rating', 'rating_clean', 'five_star_scale_rating_clean')
@@ -441,7 +441,7 @@ df.select(
 # 
 # The `ratings_count` column is correctly parsed as a numerical variable, but we can shrink it, as its range is very small (from `1` to `1533`), as we can see in the summary statistics below.
 
-# In[193]:
+# In[ ]:
 
 
 # Summary statistics the `ratings_count` variable
@@ -450,7 +450,7 @@ df.select(
 ).describe()
 
 
-# In[194]:
+# In[ ]:
 
 
 # Shrinking the datatype for the `ratings_count` column
@@ -463,7 +463,7 @@ df = df.with_columns(
 
 # Now, we can see the result of the shrinkage, which transformed the data type from `Int64` to `Int16`:
 
-# In[195]:
+# In[ ]:
 
 
 ratings_count_columns = ['ratings_count', 'ratings_count_clean']
@@ -481,7 +481,7 @@ dict(ratings_count_columns_dtypes)
 # - **`condition_label`**: A categorical label which represents the condition of a laptop (e.g: `new`, `used`, `certified_refurbished`)
 # - **`condition_description`**: A description for the `condition_label` (e.g: `A brand-new, unused, unopened laptop...`)
 
-# In[196]:
+# In[ ]:
 
 
 # Taking a look at the values counts for the `condition` column
@@ -492,7 +492,7 @@ value_counts_with_proportion(dataframe=df, col='condition')
 # - **Similar categories**: Labels `UsedAn item that has been used previously` and `Used: An item that has been used previously` seem to contain duplicate or nearly identical information but are represented differently. Similar things occur for other labels, such as `For parts or not working`. These discrepancies may need to be cleaned and consolidated into one label.
 # - **Bad formatting**: A considerable amount of labels show formatting issues (e.g., "UsedAn item...") or seem to be concatenated with additional descriptions. This would require text processing to standardize the condition labels and improve consistency.
 
-# In[197]:
+# In[ ]:
 
 
 # Creating a dictionary which represents the condition labels and descriptions
@@ -560,7 +560,7 @@ def fetch_default_condition_replace_map() -> dict[str, str]:
     }
 
 
-# In[198]:
+# In[ ]:
 
 
 # Creating a function to map condition values to a condition dictionary, which represents labels (e.g: `New`) as keys and description as values (e.g: `A brand-new, unused item...`).
@@ -601,7 +601,7 @@ def map_condition(value: str, condition_dict: dict[str, str] = None) -> tuple[st
 # - **Mapping conditions**: Repeated labels with different formats, such as `UsedAn item that has been used previously` and `Used: An item that has been used previously` are mapped to a single `condition_label` (`'Used'`) which helps us achieve a better label representation by getting rid of different categories that represent the same status (`Used`, `New`, etc.).
 # 
 
-# In[199]:
+# In[ ]:
 
 
 # Transforming the dataframe, creating the `condition_label` and `condition_description` variables
@@ -624,7 +624,7 @@ LazyFrame.show_graph(df_lazy_conditions)
 
 # Here we take a look at the values from our `condition` column, and their correspondent **condition labels** and **condition descriptions**.
 
-# In[200]:
+# In[ ]:
 
 
 # Selecting all unique values for condition, and their soon-to-be assigned condition labels and condition descriptions
@@ -646,7 +646,7 @@ df_lazy_conditions.unique(
 # - **Standardizing format:** Replacing occurrences hyphens and whitespaces with an underscore (`_`), making the labels more consistent and clean.
 # 
 
-# In[201]:
+# In[ ]:
 
 
 # Reformatting `condition_label_clean` and `condition_description_clean`: replacing blank spaces for underscores and lowercasing
@@ -672,7 +672,7 @@ df.unique(
 
 # Finally, we take a look at the new `condition_label` variable and its value counts:
 
-# In[202]:
+# In[ ]:
 
 
 # Taking a look at the values counts for the `condition_label_clean` column
@@ -688,7 +688,7 @@ value_counts_with_proportion(dataframe=df, col='condition_label_clean')
 # - **Unknown values**: There's an abundance of brands with very low frequencies, or unknown values (like `?` or `Does not apply` or `no` or `none`).
 # 
 
-# In[203]:
+# In[ ]:
 
 
 # Taking a look at the values counts for the `processor` column
@@ -708,7 +708,7 @@ value_counts_with_proportion(dataframe=df, col='processor')
 # - **Consistent Formatting:** We ensure all processor names are in lowercase, and we remove any unnecessary spaces or punctuation that could create inconsistencies. (transforming `Intel core - 7th gen.` into `intel_core_7th_gen`).
 # - **Replacing Uncertain Values:** We also handle special cases where the data might have uncertain or irrelevant values (e.g., `?` or `no`), replacing them with more meaningful values such as `unknown` or `not_applicable`.
 
-# In[204]:
+# In[ ]:
 
 
 # Define a mapping to handle various non-standard or missing values in the 'processor' column.
@@ -737,7 +737,7 @@ df.select(
 ).head(n=10)
 
 
-# In[205]:
+# In[ ]:
 
 
 # Taking a look at the poorly formatted `processor` values, with their correspondent values in `processor_clean`
@@ -756,7 +756,7 @@ df.select(
 
 # Finally, we inspect visually our newly created `processor_clean` variable:
 
-# In[206]:
+# In[ ]:
 
 
 # Taking a look the new `processor_clean` column and its value counts
@@ -765,7 +765,7 @@ value_counts_with_proportion(dataframe=df, col='processor_clean')
 
 # ## Cleaning `screen_size`
 
-# In[207]:
+# In[ ]:
 
 
 # Screen size value counts and their proportion
@@ -778,7 +778,7 @@ value_counts_with_proportion(dataframe=df, col='screen_size', to_pandas=True)
 # 
 # In this way, we can perform further analysis, visualization and numerical computations on the screen size, ensuring that we no longer have to deal with mixed formats.
 
-# In[208]:
+# In[ ]:
 
 
 # Define the regex pattern to extract numeric values (floating point or integer) from screen_size column
@@ -797,7 +797,7 @@ df['screen_size_inches_clean'].head(n=10)
 
 # We can now take a look at the summary statistics for the new `screen_size_inches` variable
 
-# In[209]:
+# In[ ]:
 
 
 # Looking at the summary statistics for the `screen_size_inches` variable
@@ -813,7 +813,7 @@ df['screen_size_inches_clean'].describe()
 # 
 # We're interested in correcting the outliers in the `screen_size_inches` column, as the maximum value is that of a `1000` inches, which makes very little sense. We'll start by visualizing the top values from that column, to see whether we have several outliers or this is just the product of an error in the data extraction process:
 
-# In[210]:
+# In[ ]:
 
 
 df['screen_size_inches_clean'].filter(
@@ -826,7 +826,7 @@ df['screen_size_inches_clean'].filter(
 # We immediately realize we have just two values of `1000` inches, which are heavily skewing the data. The rest of the distribution lies between the range of `2-18` inches, which is sensible.
 # In order to address this, we need to find where these values are originally located. Which is, the `screen_size` column:
 
-# In[211]:
+# In[ ]:
 
 
 df.select('screen_size').filter(pl.col('screen_size').str.contains('1000'))
@@ -838,7 +838,7 @@ df.select('screen_size').filter(pl.col('screen_size').str.contains('1000'))
 # 
 # Hence, we replace these unreasonable values with `None` to ensure that the data used for analysis remains consistent and meaningful.
 
-# In[212]:
+# In[ ]:
 
 
 # Replace rows where screen_size_inches_clean is equal to a thousand (which is incorrect data)
@@ -859,7 +859,7 @@ df['screen_size_inches_clean'].filter(
 
 # Now, we see that the maximum value for the *screen size in inches* variable make a lot more sense. We proceed to visualize its summary statistics once again:
 
-# In[213]:
+# In[ ]:
 
 
 # Looking back at the summary statistics for the `screen_size_inches` variable
@@ -875,7 +875,7 @@ df['screen_size_inches_clean'].describe()
 # - Some entries represent multiple colors in a single field (e.g: `Black & Silver`).
 # - Most entries have very little frequency, appearing a single time in the entire column. These rare values might be considered noise (and grouped into a rare label category, such as `rare` or `other`) or might to be grouped into broader categories by using the color label (such as grouping `Mica Silver` and `Ice Blue` into a broader `Blue` category).
 
-# In[214]:
+# In[ ]:
 
 
 # Color value counts and their proportion
@@ -893,7 +893,7 @@ value_counts_with_proportion(dataframe=df, col='manufacturer_color')
 # - Color contains data in spanish, as evidenced by some of its values: `borgoña` (burgundy), `blanco` (white) or `negro` (black).
 # - Some entries represent multiple colors in a single field (e.g: `Black/ Blue / Sandtone / Platinum`).
 
-# In[215]:
+# In[ ]:
 
 
 # Color value counts and their proportion
@@ -910,7 +910,7 @@ value_counts_with_proportion(dataframe=df, col='color')
 # - **Reducing cardinality:** The color data may contain variations or inconsistencies in how colors are labeled (e.g., `multi-color` vs. `multicolor`). We address this by grouping similar colors under consistent labels, reducing the number of unique color categories. We also map color variations (e.g, `sky blue`, `light blue`) to a single color (`blue`).
 # - **Standardizing format:** Check whether the color listed for each item matches a set of predefined valid colors. Ensures that all color data follows a consistent format.
 
-# In[216]:
+# In[ ]:
 
 
 def fetch_valid_colors_list() -> list[str]:
@@ -992,10 +992,10 @@ def fetch_default_color_replace_map() -> dict[str, str]:
     }
 
 
-# In[217]:
+# In[ ]:
 
 
-def clean_color(color: str, valid_colors_list: list[str] = None) -> str:
+def clean_colors(color: str, valid_colors_list: list[str] = None) -> str:
     """
     Cleans and categorizes the input color string based on a predefined list of valid colors.
 
@@ -1020,11 +1020,11 @@ def clean_color(color: str, valid_colors_list: list[str] = None) -> str:
              - 'other' if no valid color matches.
 
     Example:
-        >>> clean_color('Red and black shoes')
+        >>> clean_colors('Red and black shoes')
         'multicolor'
-        >>> clean_color('Pink', fetch_valid_colors_list())
+        >>> clean_colors('Pink', fetch_valid_colors_list())
         'pink'
-        >>> clean_color('Sky Blue')
+        >>> clean_colors('Sky Blue')
         'other'
     """
     if valid_colors_list is None:
@@ -1040,11 +1040,77 @@ def clean_color(color: str, valid_colors_list: list[str] = None) -> str:
         return 'other'
 
 
-# In[218]:
+def get_valid_color_string_pattern() -> str:
+    """
+    Generates a regular expression pattern to match valid color names.
+
+    This function constructs a regular expression pattern by joining all valid color names
+    (fetched from `fetch_valid_colors_list`) using the `|` (OR) operator. The result is a pattern
+    that can be used to match any of the valid color names in a string, ensuring that only recognized
+    colors are identified.
+
+    The function also escapes special characters in the color names to ensure they are treated as literal
+    values in the regular expression.
+
+    Returns:
+        str: A regular expression pattern that matches any valid color name.
+
+    Example:
+        >>> pattern = get_valid_color_string_pattern()
+        >>> pattern
+        'beige|black|blue|bronze|brown|burgundy|gold|gray|green|grey|orange|pink|platinum|purple|red|silver|teal|white|yellow'
+    """
+    return "|".join(re.escape(color) for color in fetch_valid_colors_list())
 
 
-# Creates an expression to search for valid colors
-valid_color_string_pattern = "|".join(re.escape(color) for color in fetch_valid_colors_list())
+def clean_colors_with_multicolor_and_rare_encoding(
+        colors: pl.Expr,
+        color_cleaning_function: Callable[[Any], Any] = clean_colors,
+        multicolor_label: str = 'multicolor',
+        rare_label: str = 'other',
+        valid_color_string_pattern: str = get_valid_color_string_pattern(),
+        return_dtype: pl.DataType = pl.Utf8,
+) -> pl.Expr:
+    """
+    Cleans and classifies color values into valid colors, multicolor, or rare categories.
+
+    This function processes a series of color values by first checking if they match a
+    valid color pattern. If they do, it applies the provided color cleaning function to
+    standardize the color value. If the color is a valid single color, it returns the cleaned color.
+    If the color is 'multicolor', it returns the label for multicolor. Any other colors or invalid
+    values are classified as 'rare' and assigned a specified rare label.
+
+    Args:
+        colors (pl.Expr): A Polars expression representing the series of color values to be processed.
+        color_cleaning_function (Callable[[Any], Any], optional): A function to clean or standardize valid color values.
+            Defaults to `clean_colors`.
+        multicolor_label (str, optional): The label used for multicolor values. Defaults to 'multicolor'.
+        rare_label (str, optional): The label used for colors that don't match the valid or multicolor criteria. Defaults to 'other'.
+        valid_color_string_pattern (str, optional): A regex pattern used to validate the color strings. Defaults to `get_valid_color_string_pattern()`.
+        return_dtype (pl.DataType, optional): The data type to return after the color cleaning. Defaults to `pl.Utf8` (string).
+
+    Returns:
+        pl.Expr: A Polars expression with the cleaned and labeled color values, either valid color, multicolor, or rare.
+
+    Example:
+        >>> cleaned_colors = clean_colors_with_multicolor_and_rare_encoding(colors)
+        >>> cleaned_colors
+        <Polars expression with cleaned and labeled colors>
+    """
+    return pl.coalesce(
+        # If color is valid then apply the `clean_color` function, and map its value to a valid color, multicolor or other (rare label, for invalid color categories)
+        pl.when(colors.str.contains(valid_color_string_pattern))
+        .then(colors.map_elements(color_cleaning_function, return_dtype=return_dtype)),
+        # If color value is set to multicolor, then return multicolor
+        pl.when(colors.eq(multicolor_label))
+        .then(pl.lit(multicolor_label))
+        # If value is not multicolor nor a single color,then assign it to `other`
+        .otherwise(pl.lit(rare_label))
+    )
+
+
+# In[ ]:
+
 
 # Prepare the color column by converting to lowercase and applying the color replacements
 manufacturer_color_reformatted = (
@@ -1054,16 +1120,7 @@ manufacturer_color_reformatted = (
 )
 
 df = df.with_columns(
-    pl.coalesce(
-        # If color is valid then apply the `clean_color` function, and map its value to a valid color, multicolor or other (rare label, for invalid color categories)
-        pl.when(manufacturer_color_reformatted.str.contains(valid_color_string_pattern))
-        .then(manufacturer_color_reformatted.map_elements(clean_color, return_dtype=pl.Utf8)),
-        # If color value is set to multicolor, then return multicolor
-        pl.when(manufacturer_color_reformatted.eq('multicolor'))
-        .then(pl.lit('multicolor'))
-        # If value is not multicolor nor a single color,then assign it to `other`
-        .otherwise(pl.lit('other'))
-    )
+    clean_colors_with_multicolor_and_rare_encoding(colors=manufacturer_color_reformatted)
     .str.replace('grey',
                  'gray')  # Naturally, we need to map grey to gray (or vice versa) as it represents the same color
     .alias('manufacturer_color_clean')
@@ -1113,16 +1170,7 @@ color_reformatted = (
 )
 
 df = df.with_columns(
-    pl.coalesce(
-        # If color is valid then apply the `clean_color` function, and map its value to a valid color, multicolor or other (rare label, for invalid color categories)
-        pl.when(color_reformatted.str.contains(valid_color_string_pattern))
-        .then(color_reformatted.map_elements(clean_color, return_dtype=pl.Utf8)),
-        # If color value is set to multicolor, then return multicolor
-        pl.when(color_reformatted.eq('multicolor'))
-        .then(pl.lit('multicolor'))
-        # If value is not multicolor nor a single color,then assign it to `other`
-        .otherwise(pl.lit('other'))
-    )
+    clean_colors_with_multicolor_and_rare_encoding(colors=color_reformatted)
     .str.replace('grey',
                  'gray')  # Naturally, we need to map grey to gray (or vice versa) as it represents the same color
     .alias('color_clean')
