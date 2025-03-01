@@ -29,7 +29,7 @@
 # <img src="../assets/logos/polars.png"/>
 # </div>
 
-# In[ ]:
+# In[176]:
 
 
 # Importing libraries and setting constants
@@ -46,7 +46,7 @@ DATA_SOURCE_PATH = '../data/ebay_laptops_and_notebooks.csv'
 
 # ## Data Exploration
 
-# In[ ]:
+# In[177]:
 
 
 # Loading the dataset
@@ -66,7 +66,7 @@ df.head(n=10)
 # 
 # We compute the summary statistics for our dataset, but we instantly notice most of our columns are nullable, which makes statistics, such as the mean and standard deviation, to output `null` too.
 
-# In[ ]:
+# In[178]:
 
 
 # Summary statistics
@@ -77,7 +77,7 @@ df.describe()
 # 
 # Now, we take a look at the `null count` and `null proportion` per each dataframe column:
 
-# In[ ]:
+# In[179]:
 
 
 # Nulls per each column in the dataset
@@ -100,7 +100,7 @@ df.null_count().unpivot(
 # 
 # We look at each column data type in the data frame
 
-# In[ ]:
+# In[180]:
 
 
 # Data Types
@@ -118,7 +118,7 @@ pl.DataFrame(data={
 # 
 # We kick things off by *reformatting* the column names: lowercasing and removing spaces for underscores. These convention for string data will be **STANDARD** during our data cleansing process, so that most categorical data is transformed into similar formatting.
 
-# In[ ]:
+# In[181]:
 
 
 # Renaming columns: replacing blank spaces for underscores and lowercasing columns
@@ -128,7 +128,7 @@ print(df.columns)
 
 # ## Utility Functions
 
-# In[ ]:
+# In[182]:
 
 
 def value_counts_with_proportion(dataframe: pl.DataFrame,
@@ -198,7 +198,7 @@ def value_counts_with_proportion(dataframe: pl.DataFrame,
 # - **Inconsistent formatting**: Some entries like `Dell Inc` are not captured under the main brand `Dell` due to inconsistent formatting. Similar things occur to other top brands.
 # - **Multibrand categories**: Some entries represent several brands, like `Dell / HP / Lenovo` or `Apple / LG`
 
-# In[ ]:
+# In[183]:
 
 
 # Taking a look at the frequency of each brand: total count and proportion
@@ -213,7 +213,7 @@ value_counts_with_proportion(dataframe=df, col='brand')
 # - **Replacing Uncertain Values:** We also handle special cases where the data might have uncertain or irrelevant values (e.g., a "?" for unknown brands), replacing them with more meaningful terms like "unbranded" or "unknown."
 # 
 
-# In[ ]:
+# In[184]:
 
 
 # Define a mapping to replace certain placeholder values with more meaningful labels.
@@ -247,7 +247,7 @@ df = df.with_columns(
 # By applying these steps, we ensure that any variations or inconsistencies in the brand names are correctly mapped to the top brands, improving the consistency and accuracy of our analysis.
 # 
 
-# In[ ]:
+# In[185]:
 
 
 # Identify the top 5 most frequent brands in the dataset.
@@ -300,7 +300,7 @@ df = df.with_columns(
 )
 
 
-# In[ ]:
+# In[186]:
 
 
 # Taking another look at the frequency of each brand: total count and proportion
@@ -317,7 +317,7 @@ value_counts_with_proportion(dataframe=df, col='brand_clean')
 # - **Inconsistent format**: The cost of a laptop might be fixed (e.g: `880`) or a range (e.g: `from 500 to 999`)
 # - **Bad typing**: `price` is currently a categorical (`String`) variable, due to commas, whitespaces and symbols. To use this data effectively for statistical models, we **MUST CONVERT** it into **NUMERICAL**, removing currency symbols and handling text-based variations like ranges.
 
-# In[ ]:
+# In[187]:
 
 
 # Taking a look at the first 5 records from the `price` column, as is
@@ -337,7 +337,7 @@ df['price'].head(n=10)
 # - **Ensuring Proper Data Types:** After cleaning, we cast the extracted price values to `Float64`, making them compatible with statistical models and numerical computations.
 # 
 
-# In[ ]:
+# In[188]:
 
 
 df = df.with_columns(
@@ -362,7 +362,7 @@ df.select(
 
 # ## Cleaning `rating` & `ratings_count`
 
-# In[ ]:
+# In[189]:
 
 
 # Taking a look at the frequency of each rating: total count and proportion
@@ -374,7 +374,7 @@ value_counts_with_proportion(dataframe=df, col='rating')
 # - **Strong positive bias**: Ratings are overwhelmingly positive, with **5 out of 5 stars (2%)** and **4.5 out of 5 stars (2%)** making up nearly all non-null values. Only **5 instances** have ratings of **3 stars or lower**, making it difficult to assess dissatisfaction trends.
 # - **Possible numerical conversion**: The `rating` column is currently a String but can be converted into an `Int` **five_star_scale** variable for analysis.
 
-# In[ ]:
+# In[190]:
 
 
 # Taking a look at the frequency of each rating count: total count and proportion
@@ -389,7 +389,7 @@ value_counts_with_proportion(dataframe=df, col='ratings_count')
 # 
 # In this step, we transform the `rating` variable to variable `five_star_scale_rating` ( which, as its name implies, is a numerical variable ranging from 1-5; representing the product rating on a five-star scale) as well as clean its format (replacing spaces / decimal points with underscores) and assign the result to `rating_clean`.
 
-# In[ ]:
+# In[191]:
 
 
 # Define the regex pattern for extracting numeric values (including decimals)
@@ -420,7 +420,7 @@ df = df.with_columns(
 
 # Now, we inspect our newly created `rating_clean` & `five_star_scale_rating_clean` variables, and compare them to the original `rating` variable
 
-# In[ ]:
+# In[192]:
 
 
 rating_columns = ('rating', 'rating_clean', 'five_star_scale_rating_clean')
@@ -441,7 +441,7 @@ df.select(
 # 
 # The `ratings_count` column is correctly parsed as a numerical variable, but we can shrink it, as its range is very small (from `1` to `1533`), as we can see in the summary statistics below.
 
-# In[ ]:
+# In[193]:
 
 
 # Summary statistics the `ratings_count` variable
@@ -450,7 +450,7 @@ df.select(
 ).describe()
 
 
-# In[ ]:
+# In[194]:
 
 
 # Shrinking the datatype for the `ratings_count` column
@@ -463,7 +463,7 @@ df = df.with_columns(
 
 # Now, we can see the result of the shrinkage, which transformed the data type from `Int64` to `Int16`:
 
-# In[ ]:
+# In[195]:
 
 
 ratings_count_columns = ['ratings_count', 'ratings_count_clean']
@@ -481,7 +481,7 @@ dict(ratings_count_columns_dtypes)
 # - **`condition_label`**: A categorical label which represents the condition of a laptop (e.g: `new`, `used`, `certified_refurbished`)
 # - **`condition_description`**: A description for the `condition_label` (e.g: `A brand-new, unused, unopened laptop...`)
 
-# In[ ]:
+# In[196]:
 
 
 # Taking a look at the values counts for the `condition` column
@@ -492,53 +492,79 @@ value_counts_with_proportion(dataframe=df, col='condition')
 # - **Similar categories**: Labels `UsedAn item that has been used previously` and `Used: An item that has been used previously` seem to contain duplicate or nearly identical information but are represented differently. Similar things occur for other labels, such as `For parts or not working`. These discrepancies may need to be cleaned and consolidated into one label.
 # - **Bad formatting**: A considerable amount of labels show formatting issues (e.g., "UsedAn item...") or seem to be concatenated with additional descriptions. This would require text processing to standardize the condition labels and improve consistency.
 
-# In[ ]:
+# In[197]:
 
 
 # Creating a dictionary which represents the condition labels and descriptions
 
-condition_replace_map = {
-    'New': """A brand-new, unused, unopened, undamaged item in its original packaging.
+def fetch_default_condition_replace_map() -> dict[str, str]:
+    """
+    Retrieves the default mapping of condition labels to their corresponding descriptions.
+
+    This function returns a dictionary where the keys represent the condition labels (e.g., "New", "Used",
+    "Certified - Refurbished") and the values are detailed descriptions of those conditions, typically used
+    for categorizing product status in e-commerce platforms or inventory systems.
+
+    The conditions cover a range from brand-new items to those intended for parts or not working.
+
+    Returns:
+        dict[str, str]: A dictionary containing condition labels as keys and their corresponding descriptions as values.
+
+    Example:
+        >>> condition_map = fetch_default_condition_replace_map()
+        >>> condition_map['New']
+        'A brand-new, unused, unopened, undamaged item in its original packaging...'
+
+    Notes:
+        - The returned dictionary includes a variety of common product conditions, such as 'New', 'Open box',
+          'Certified - Refurbished', 'Used', and 'For parts or not working'.
+        - The descriptions are intended to give a clear understanding of what each condition entails, especially
+          for product listings or descriptions.
+        - The dictionary is static and predefined, providing a standard set of condition descriptions for use
+          across the system.
+    """
+    return {
+        'New': """A brand-new, unused, unopened, undamaged item in its original packaging.
     Packaging should be the same as what is found in a retail store, unless the item is handmade or was packaged by the manufacturer in non-retail packaging, such as an unprinted box or plastic bag.""",
 
-    'Open box': """An item in excellent, new condition with no wear.
+        'Open box': """An item in excellent, new condition with no wear.
     The item may be missing the original packaging or protective wrapping, or may be in the original packaging but not sealed.
     The item includes original accessories and may be a factory second.""",
 
-    'Certified - Refurbished': """The item is in pristine, like-new condition.
+        'Certified - Refurbished': """The item is in pristine, like-new condition.
     It has been professionally inspected, cleaned, and refurbished by the manufacturer or a manufacturer-approved vendor to meet manufacturer specifications.
     The item will be in new packaging with original or new accessories.""",
 
-    'Excellent - Refurbished': """The item is in like-new condition, backed by a one-year warranty.
+        'Excellent - Refurbished': """The item is in like-new condition, backed by a one-year warranty.
     It has been professionally refurbished, inspected, and cleaned to excellent condition by qualified sellers.
     The item includes original or new accessories and will come in new generic packaging.""",
 
-    'Very Good - Refurbished': """The item shows minimal wear and is backed by a one-year warranty.
+        'Very Good - Refurbished': """The item shows minimal wear and is backed by a one-year warranty.
     It is fully functional and has been professionally refurbished, inspected, and cleaned to very good condition by qualified sellers.
     The item includes original or new accessories and will come in new generic packaging.""",
 
-    'Good - Refurbished': """The item shows moderate wear and is backed by a one-year warranty.
+        'Good - Refurbished': """The item shows moderate wear and is backed by a one-year warranty.
     It is fully functional and has been professionally refurbished, inspected, and cleaned to good condition by qualified sellers.
     The item includes original or new accessories and will come in a new generic packaging.""",
 
-    'Seller refurbished': """The item has been restored to working order by the eBay seller or a third party.
+        'Seller refurbished': """The item has been restored to working order by the eBay seller or a third party.
     This means the item was inspected, cleaned, and repaired to full working order and is in excellent condition.
     This item may or may not be in original packaging.""",
 
-    'Used': """An item that has been used previously.
+        'Used': """An item that has been used previously.
     The item may have some signs of cosmetic wear but is fully operational and functions as intended.
     This item may be a floor model or store return that has been used.""",
 
-    'For parts or not working': """An item that does not function as intended and is not fully operational.
+        'For parts or not working': """An item that does not function as intended and is not fully operational.
     This includes items that are defective in ways that render them difficult to use, items that require service or repair, or items missing essential components."""
-}
+    }
 
 
-# In[ ]:
+# In[198]:
 
 
 # Creating a function to map condition values to a condition dictionary, which represents labels (e.g: `New`) as keys and description as values (e.g: `A brand-new, unused item...`).
-def map_condition(value: str, condition_dict: dict[str, str] = condition_replace_map) -> tuple[str, str]:
+def map_condition(value: str, condition_dict: dict[str, str] = None) -> tuple[str, str]:
     """
     Maps a given condition string to a predefined label and its corresponding description.
 
@@ -558,6 +584,9 @@ def map_condition(value: str, condition_dict: dict[str, str] = condition_replace
         >>> map_condition("Unknown condition")
         ('No label', 'No description')
     """
+    if condition_dict is None:
+        condition_dict = fetch_default_condition_replace_map()
+
     if isinstance(value, str):
         for label, description in condition_dict.items():
             if label in value:
@@ -572,7 +601,7 @@ def map_condition(value: str, condition_dict: dict[str, str] = condition_replace
 # - **Mapping conditions**: Repeated labels with different formats, such as `UsedAn item that has been used previously` and `Used: An item that has been used previously` are mapped to a single `condition_label` (`'Used'`) which helps us achieve a better label representation by getting rid of different categories that represent the same status (`Used`, `New`, etc.).
 # 
 
-# In[ ]:
+# In[199]:
 
 
 # Transforming the dataframe, creating the `condition_label` and `condition_description` variables
@@ -595,7 +624,7 @@ LazyFrame.show_graph(df_lazy_conditions)
 
 # Here we take a look at the values from our `condition` column, and their correspondent **condition labels** and **condition descriptions**.
 
-# In[ ]:
+# In[200]:
 
 
 # Selecting all unique values for condition, and their soon-to-be assigned condition labels and condition descriptions
@@ -617,7 +646,7 @@ df_lazy_conditions.unique(
 # - **Standardizing format:** Replacing occurrences hyphens and whitespaces with an underscore (`_`), making the labels more consistent and clean.
 # 
 
-# In[ ]:
+# In[201]:
 
 
 # Reformatting `condition_label_clean` and `condition_description_clean`: replacing blank spaces for underscores and lowercasing
@@ -643,7 +672,7 @@ df.unique(
 
 # Finally, we take a look at the new `condition_label` variable and its value counts:
 
-# In[ ]:
+# In[202]:
 
 
 # Taking a look at the values counts for the `condition_label_clean` column
@@ -659,7 +688,7 @@ value_counts_with_proportion(dataframe=df, col='condition_label_clean')
 # - **Unknown values**: There's an abundance of brands with very low frequencies, or unknown values (like `?` or `Does not apply` or `no` or `none`).
 # 
 
-# In[ ]:
+# In[203]:
 
 
 # Taking a look at the values counts for the `processor` column
@@ -679,7 +708,7 @@ value_counts_with_proportion(dataframe=df, col='processor')
 # - **Consistent Formatting:** We ensure all processor names are in lowercase, and we remove any unnecessary spaces or punctuation that could create inconsistencies. (transforming `Intel core - 7th gen.` into `intel_core_7th_gen`).
 # - **Replacing Uncertain Values:** We also handle special cases where the data might have uncertain or irrelevant values (e.g., `?` or `no`), replacing them with more meaningful values such as `unknown` or `not_applicable`.
 
-# In[ ]:
+# In[204]:
 
 
 # Define a mapping to handle various non-standard or missing values in the 'processor' column.
@@ -708,7 +737,7 @@ df.select(
 ).head(n=10)
 
 
-# In[ ]:
+# In[205]:
 
 
 # Taking a look at the poorly formatted `processor` values, with their correspondent values in `processor_clean`
@@ -727,7 +756,7 @@ df.select(
 
 # Finally, we inspect visually our newly created `processor_clean` variable:
 
-# In[ ]:
+# In[206]:
 
 
 # Taking a look the new `processor_clean` column and its value counts
@@ -736,7 +765,7 @@ value_counts_with_proportion(dataframe=df, col='processor_clean')
 
 # ## Cleaning `screen_size`
 
-# In[ ]:
+# In[207]:
 
 
 # Screen size value counts and their proportion
@@ -749,7 +778,7 @@ value_counts_with_proportion(dataframe=df, col='screen_size', to_pandas=True)
 # 
 # In this way, we can perform further analysis, visualization and numerical computations on the screen size, ensuring that we no longer have to deal with mixed formats.
 
-# In[ ]:
+# In[208]:
 
 
 # Define the regex pattern to extract numeric values (floating point or integer) from screen_size column
@@ -768,7 +797,7 @@ df['screen_size_inches_clean'].head(n=10)
 
 # We can now take a look at the summary statistics for the new `screen_size_inches` variable
 
-# In[ ]:
+# In[209]:
 
 
 # Looking at the summary statistics for the `screen_size_inches` variable
@@ -784,7 +813,7 @@ df['screen_size_inches_clean'].describe()
 # 
 # We're interested in correcting the outliers in the `screen_size_inches` column, as the maximum value is that of a `1000` inches, which makes very little sense. We'll start by visualizing the top values from that column, to see whether we have several outliers or this is just the product of an error in the data extraction process:
 
-# In[ ]:
+# In[210]:
 
 
 df['screen_size_inches_clean'].filter(
@@ -797,7 +826,7 @@ df['screen_size_inches_clean'].filter(
 # We immediately realize we have just two values of `1000` inches, which are heavily skewing the data. The rest of the distribution lies between the range of `2-18` inches, which is sensible.
 # In order to address this, we need to find where these values are originally located. Which is, the `screen_size` column:
 
-# In[ ]:
+# In[211]:
 
 
 df.select('screen_size').filter(pl.col('screen_size').str.contains('1000'))
@@ -809,7 +838,7 @@ df.select('screen_size').filter(pl.col('screen_size').str.contains('1000'))
 # 
 # Hence, we replace these unreasonable values with `None` to ensure that the data used for analysis remains consistent and meaningful.
 
-# In[ ]:
+# In[212]:
 
 
 # Replace rows where screen_size_inches_clean is equal to a thousand (which is incorrect data)
@@ -830,7 +859,7 @@ df['screen_size_inches_clean'].filter(
 
 # Now, we see that the maximum value for the *screen size in inches* variable make a lot more sense. We proceed to visualize its summary statistics once again:
 
-# In[ ]:
+# In[213]:
 
 
 # Looking back at the summary statistics for the `screen_size_inches` variable
@@ -846,7 +875,7 @@ df['screen_size_inches_clean'].describe()
 # - Some entries represent multiple colors in a single field (e.g: `Black & Silver`).
 # - Most entries have very little frequency, appearing a single time in the entire column. These rare values might be considered noise (and grouped into a rare label category, such as `rare` or `other`) or might to be grouped into broader categories by using the color label (such as grouping `Mica Silver` and `Ice Blue` into a broader `Blue` category).
 
-# In[ ]:
+# In[214]:
 
 
 # Color value counts and their proportion
@@ -864,7 +893,7 @@ value_counts_with_proportion(dataframe=df, col='manufacturer_color')
 # - Color contains data in spanish, as evidenced by some of its values: `borgoña` (burgundy), `blanco` (white) or `negro` (black).
 # - Some entries represent multiple colors in a single field (e.g: `Black/ Blue / Sandtone / Platinum`).
 
-# In[ ]:
+# In[215]:
 
 
 # Color value counts and their proportion
@@ -881,75 +910,147 @@ value_counts_with_proportion(dataframe=df, col='color')
 # - **Reducing cardinality:** The color data may contain variations or inconsistencies in how colors are labeled (e.g., `multi-color` vs. `multicolor`). We address this by grouping similar colors under consistent labels, reducing the number of unique color categories. We also map color variations (e.g, `sky blue`, `light blue`) to a single color (`blue`).
 # - **Standardizing format:** Check whether the color listed for each item matches a set of predefined valid colors. Ensures that all color data follows a consistent format.
 
-# In[ ]:
+# In[216]:
 
 
-# List of valid color values for consistency checks
-valid_color_values = ['beige', 'black', 'blue', 'bronze', 'brown', 'burgundy', 'gold', 'gray', 'green', 'grey',
-                      'orange', 'pink', 'platinum', 'purple', 'red', 'silver', 'teal', 'white', 'yellow']
-
-# Spanish-to-English color translation map
-colors_translation = {
-    'negro': 'black',
-    'borgoña': 'burgundy',
-    'platino': 'platinum',
-    'gris': 'grey',
-    'blanco': 'white',
-    'plata transparente': 'transparent silver',
-}
-
-# Color replacement map
-color_replace_map = {
-    'multi': 'multicolor',
-    'multi-color': 'multicolor',
-    'blk': 'black',
-    **colors_translation,
-}
-
-color_replace_map
-
-
-# In[ ]:
-
-
-def clean_color(color: str, color_list: list[str] = valid_color_values) -> str:
+def fetch_valid_colors_list() -> list[str]:
     """
-    Cleans the input color string by categorizing it based on the presence of valid colors.
+    Retrieves a list of valid color values used for consistency checks.
 
-    The function checks if the input `color` matches any of the colors in the `color_list`.
-    It returns a category based on the number of matches:
-    - If the color matches more than one valid color, it returns 'multicolor'.
-    - If the color matches exactly one valid color, it returns that color (e.g: 'red').
-    - If no valid colors are found, it returns 'other'.
-
-    Args:
-        color (str): The input color string to be cleaned and categorized.
-        color_list (list, optional): A list of valid colors to check against. Defaults to `valid_color_values`.
+    This function returns a predefined list of color names in lowercase, representing common colors
+    used in product descriptions, inventory management, or other applications requiring color categorization.
+    The list ensures that color values are consistent across various data entries and avoids discrepancies
+    in color terminology.
 
     Returns:
-        str: The cleaned and categorized color, either a valid color, 'multicolor', or 'other'.
+        list[str]: A list of valid color values as strings.
+
+    Example:
+        >>> valid_colors = fetch_valid_colors_list()
+        >>> valid_colors
+        ['beige', 'black', 'blue', 'bronze', 'brown', 'burgundy', 'gold', 'gray', 'green', 'grey',
+        'orange', 'pink', 'platinum', 'purple', 'red', 'silver', 'teal', 'white', 'yellow']
     """
-    color_count = sum(1 for c in color_list if c in color.lower())
+    return [
+        'beige', 'black', 'blue', 'bronze', 'brown', 'burgundy', 'gold', 'gray', 'green', 'grey',
+        'orange', 'pink', 'platinum', 'purple', 'red', 'silver', 'teal', 'white', 'yellow'
+    ]
+
+
+def fetch__spanish_to_english_colors_translation() -> dict[str, str]:
+    """
+    Retrieves the Spanish-to-English translation map for color names.
+
+    This function returns a dictionary where the keys are color names in Spanish and the values
+    are their corresponding English color names. The map is useful for translating Spanish color inputs
+    into their standard English representations, ensuring consistency and clarity when working with bilingual
+    or internationalized data.
+
+    Returns:
+        dict[str, str]: A dictionary mapping Spanish color names to their English equivalents.
+
+    Example:
+        >>> colors_translation = fetch__spanish_to_english_colors_translation()
+        >>> colors_translation['negro']
+        'black'
+    """
+    return {
+        'negro': 'black',
+        'borgoña': 'burgundy',
+        'platino': 'platinum',
+        'gris': 'grey',
+        'blanco': 'white',
+        'plata transparente': 'transparent silver',
+    }
+
+
+def fetch_default_color_replace_map() -> dict[str, str]:
+    """
+    Retrieves the color replacement map for various shorthand or alternative color representations.
+
+    This function returns a dictionary where keys represent color names in shorthand or variant forms,
+    and values represent the standardized color names. The map includes commonly used abbreviations as well
+    as Spanish-to-English translations to ensure consistency across different color-related data entries.
+    This map is essential for normalizing color inputs and improving data consistency in applications requiring
+    standardized color representations.
+
+    Returns:
+        dict[str, str]: A dictionary mapping color shorthands or variants to standardized color names.
+
+    Example:
+        >>> color_replace_map = fetch_default_color_replace_map()
+        >>> color_replace_map['blk']
+        'black'
+        >>> color_replace_map['multi']
+        'multicolor'
+    """
+    return {
+        'multi': 'multicolor',
+        'multi-color': 'multicolor',
+        'blk': 'black',
+        **fetch__spanish_to_english_colors_translation(),
+    }
+
+
+# In[217]:
+
+
+def clean_color(color: str, valid_colors_list: list[str] = None) -> str:
+    """
+    Cleans and categorizes the input color string based on a predefined list of valid colors.
+
+    This function processes the input color string (`color`) to determine its category based on matching
+    valid color values. It performs the following checks:
+    - If the input color string matches multiple valid colors, it returns 'multicolor'.
+    - If it matches exactly one valid color, it returns that specific color (e.g., 'red').
+    - If no valid colors are found, it returns 'other'.
+
+    The function is useful for standardizing and categorizing color values, especially when handling product descriptions,
+    inventory data, or user inputs with potentially varied or unstandardized color names.
+
+    Args:
+        color (str): The input color string to be cleaned and categorized. It may include color names in different formats or case.
+        valid_colors_list (list[str], optional): A list of valid color values to check against. If not provided, the function uses
+                                                  the `valid_color_values` list returned by `fetch_valid_colors_list()`.
+
+    Returns:
+        str: The cleaned and categorized color. Possible values are:
+             - A valid color name from the `valid_colors_list` (e.g., 'red')
+             - 'multicolor' if multiple valid colors are found in the input
+             - 'other' if no valid color matches.
+
+    Example:
+        >>> clean_color('Red and black shoes')
+        'multicolor'
+        >>> clean_color('Pink', fetch_valid_colors_list())
+        'pink'
+        >>> clean_color('Sky Blue')
+        'other'
+    """
+    if valid_colors_list is None:
+        valid_colors_list = fetch_valid_colors_list()
+
+    color_count = sum(1 for c in valid_colors_list if c in color.lower())
 
     if color_count > 1:
         return 'multicolor'
     elif color_count == 1:
-        return next((c for c in valid_color_values if c in color.lower()), 'other')
+        return next((c for c in valid_colors_list if c in color.lower()), 'other')
     else:
         return 'other'
 
 
-# In[ ]:
+# In[218]:
 
 
 # Creates an expression to search for valid colors
-valid_color_string_pattern = "|".join(re.escape(color) for color in valid_color_values)
+valid_color_string_pattern = "|".join(re.escape(color) for color in fetch_valid_colors_list())
 
 # Prepare the color column by converting to lowercase and applying the color replacements
 manufacturer_color_reformatted = (
     pl.col('manufacturer_color')
     .str.to_lowercase()
-    .replace(color_replace_map)
+    .replace(fetch_default_color_replace_map())
 )
 
 df = df.with_columns(
@@ -1008,7 +1109,7 @@ df.select(
 color_reformatted = (
     pl.col('color')
     .str.to_lowercase()
-    .replace(color_replace_map)
+    .replace(fetch_default_color_replace_map())
 )
 
 df = df.with_columns(
@@ -1385,7 +1486,7 @@ value_counts_with_proportion(dataframe=df, col='type')
 # In[ ]:
 
 
-def map_type(type_str: str) -> str:
+def map_laptop_type(type_str: str) -> str:
     """
     Maps the input string representing the type of device to a standard category.
 
@@ -1405,22 +1506,19 @@ def map_type(type_str: str) -> str:
 
     Example Usage:
     --------------
-    >>> map_type("Macbook Pro 16")
+    >>> map_laptop_type("Macbook Pro 16")
     'laptop'
 
-    >>> map_type("Desktop PC")
+    >>> map_laptop_type("Desktop PC")
     'pc'
 
-    >>> map_type("Samsung Tablet")
+    >>> map_laptop_type("Samsung Tablet")
     'tablet'
 
-    >>> map_type("Unknown Device")
+    >>> map_laptop_type("Unknown Device")
     'other'
 
-    >>> map_type(None)
-    'unknown'
-
-    >>> map_type("")
+    >>> map_laptop_type("")
     'unknown'
     """
     if type_str is None or type_str == "":  # Check for None or blank
@@ -1447,15 +1545,15 @@ def map_type(type_str: str) -> str:
 
 df = df.with_columns(
     pl.col('type')
-    .map_elements(map_type, skip_nulls=False, return_dtype=pl.Utf8)  # Map the function to the 'Type' column
-    .alias('type_clean')  # Create the new column
+    .map_elements(map_laptop_type, skip_nulls=False, return_dtype=pl.Utf8)  # Map the function to the 'Type' column
+    .alias('laptop_type_clean')  # Create the new column
 )
 
 
 # In[ ]:
 
 
-value_counts_with_proportion(dataframe=df, col='type_clean')
+value_counts_with_proportion(dataframe=df, col='laptop_type_clean')
 
 
 # Observations:
@@ -1501,21 +1599,46 @@ value_counts_with_proportion(dataframe=df, col='maximum_resolution')
 
 
 # Dictionary mapping resolution types to their corresponding width and height values
-resolution_replace_map = {
-    'full hd': ['1920', '1080'],
-    'hd': ['1280', '720'],
-    '2k': ['2048', '1080'],
-    '4k': ['3840', '2160']
-}
+def fetch_default_resolution_replace_map() -> dict[str, list[str]]:
+    """
+    Retrieves the default resolution replacement map.
+
+    This function returns a dictionary mapping common resolution labels (e.g., 'full hd', 'hd', '2k', '4k')
+    to their respective width and height values as strings. The returned map is useful for standardizing
+    or translating resolution labels into actual numerical resolution dimensions, which can be utilized
+    in various contexts such as media display, video processing, or product descriptions.
+
+    Returns:
+        dict[str, list[str]]: A dictionary where the keys are resolution labels (e.g., 'full hd') and the values
+                              are lists containing the corresponding width and height values as strings.
+                              Example:
+                              {
+                                  'full hd': ['1920', '1080'],
+                                  'hd': ['1280', '720'],
+                                  '2k': ['2048', '1080'],
+                                  '4k': ['3840', '2160']
+                              }
+
+    Example:
+        >>> resolution_map = fetch_default_resolution_replace_map()
+        >>> resolution_map['hd']
+        ['1280', '720']
+    """
+    return {
+        'full hd': ['1920', '1080'],
+        'hd': ['1280', '720'],
+        '2k': ['2048', '1080'],
+        '4k': ['3840', '2160']
+    }
 
 
-def try_get_resolution_value(resolution: str, resolution_dic: dict[str, list[str]], index: int) -> Optional[str]:
+def try_get_resolution_value(resolution: str, resolution_dict: dict[str, list[str]], index: int) -> Optional[str]:
     """
     Helper function to retrieve the width or height from the resolution dictionary or the 'width x height' format.
 
     Args:
         resolution (str): The resolution string to process (e.g., '1920x1080', 'full hd').
-        resolution_dic (dict): A dictionary mapping resolution names to their respective width and height.
+        resolution_dict (dict): A dictionary mapping resolution names to their respective width and height.
         index (int): The index (0 for width, 1 for height) to retrieve from the dictionary.
 
     Returns:
@@ -1529,12 +1652,12 @@ def try_get_resolution_value(resolution: str, resolution_dic: dict[str, list[str
     resolution = ''.join(resolution.split()).lower()
 
     # Check if the resolution matches one of the predefined names in the dictionary
-    if resolution in resolution_dic:
-        return resolution_dic[resolution][index]
+    if resolution in resolution_dict:
+        return resolution_dict[resolution][index]
 
     # Check if the resolution contains 'k' and is in the dictionary (e.g., '4k')
-    elif 'k' in resolution and resolution in resolution_dic:
-        return resolution_dic[resolution][index]
+    elif 'k' in resolution and resolution in resolution_dict:
+        return resolution_dict[resolution][index]
 
     # Check if the resolution is in the format 'width x height'
     elif 'x' in resolution:
@@ -1550,7 +1673,7 @@ def try_get_resolution_value(resolution: str, resolution_dic: dict[str, list[str
 
 
 def extract_width_from_resolution_str(resolution: str,
-                                      resolution_dic: dict[str, list[str]] = resolution_replace_map) -> Optional[str]:
+                                      resolution_dict: dict[str, list[str]] = None) -> Optional[str]:
     """
     Extract the width of a display from a resolution string.
 
@@ -1558,19 +1681,20 @@ def extract_width_from_resolution_str(resolution: str,
 
     Args:
         resolution (str): The resolution string to process (e.g., '1920x1080', 'full hd').
-        resolution_dic (dict, optional): A dictionary mapping resolution names to their respective width and height.
-                                         Defaults to `resolution_replace_map`.
+        resolution_dict (dict, optional): A dictionary mapping resolution names to their respective width and height.
 
     Returns:
         Optional[str]: The width of the resolution as a string, or None if no valid resolution can be extracted.
     """
+    if resolution_dict is None:
+        resolution_dict = fetch_default_resolution_replace_map()
 
     # Try getting the width using the helper function
-    return try_get_resolution_value(resolution, resolution_dic, index=0)
+    return try_get_resolution_value(resolution, resolution_dict, index=0)
 
 
 def extract_height_from_resolution_str(resolution: str,
-                                       resolution_dic: dict[str, list[str]] = resolution_replace_map) -> Optional[str]:
+                                       resolution_dict: dict[str, list[str]] = None) -> Optional[str]:
     """
     Extract the height of a display from a resolution string.
 
@@ -1578,14 +1702,16 @@ def extract_height_from_resolution_str(resolution: str,
 
     Args:
         resolution (str): The resolution string to process (e.g., '1920x1080', 'full hd').
-        resolution_dic (dict, optional): A dictionary mapping resolution names to their respective width and height.
-                                         Defaults to `resolution_replace_map`.
+        resolution_dict (dict, optional): A dictionary mapping resolution names to their respective width and height.
 
     Returns:
         Optional[str]: The height of the resolution as a string, or None if no valid resolution can be extracted.
     """
+    if resolution_dict is None:
+        resolution_dict = fetch_default_resolution_replace_map()
+
     # Try getting the height using the helper function
-    return try_get_resolution_value(resolution, resolution_dic, index=1)
+    return try_get_resolution_value(resolution, resolution_dict, index=1)
 
 
 # In[ ]:
@@ -1708,9 +1834,6 @@ def map_os_type(os: str) -> str:
 
     >>> map_os_type("Android 11")
     'android'
-
-    >>> map_os_type(None)
-    'unknown'
 
     >>> map_os_type("Not Included")
     'unknown'
@@ -1881,9 +2004,6 @@ def map_storage_type(string: str) -> str:
 
     >>> map_storage_type("Unknown Storage")
     'other'
-
-    >>> map_storage_type(None)
-    'unknown'
 
     >>> map_storage_type("")
     'unknown'
