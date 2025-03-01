@@ -29,7 +29,7 @@
 # <img src="../assets/logos/polars.png"/>
 # </div>
 
-# In[1]:
+# In[ ]:
 
 
 # Importing libraries and setting constants
@@ -46,7 +46,7 @@ DATA_SOURCE_PATH = '../data/ebay_laptops_and_notebooks.csv'
 
 # ## Data Exploration
 
-# In[2]:
+# In[ ]:
 
 
 # Loading the dataset
@@ -66,7 +66,7 @@ df.head(n=10)
 # 
 # We compute the summary statistics for our dataset, but we instantly notice most of our columns are nullable, which makes statistics, such as the mean and standard deviation, to output `null` too.
 
-# In[3]:
+# In[ ]:
 
 
 # Summary statistics
@@ -77,7 +77,7 @@ df.describe()
 # 
 # Now, we take a look at the `null count` and `null proportion` per each dataframe column:
 
-# In[4]:
+# In[ ]:
 
 
 # Nulls per each column in the dataset
@@ -100,7 +100,7 @@ df.null_count().unpivot(
 # 
 # We look at each column data type in the data frame
 
-# In[5]:
+# In[ ]:
 
 
 # Data Types
@@ -118,12 +118,78 @@ pl.DataFrame(data={
 # 
 # We kick things off by *reformatting* the column names: lowercasing and removing spaces for underscores. These convention for string data will be **STANDARD** during our data cleansing process, so that most categorical data is transformed into similar formatting.
 
-# In[6]:
+# In[ ]:
 
 
 # Renaming columns: replacing blank spaces for underscores and lowercasing columns
 df = df.rename({col: col.strip().lower().replace(' ', '_') for col in df.columns})
 print(df.columns)
+
+
+# ## Utility Functions
+
+# In[ ]:
+
+
+def value_counts_with_proportion(dataframe: pl.DataFrame,
+                                 col: str,
+                                 proportion_col_alias: str = 'proportion',
+                                 to_pandas: bool = False) -> pl.DataFrame:
+    """
+    Calculate the value counts for a specified column in a Polars DataFrame and return a DataFrame with
+    the counts and their corresponding proportions.
+
+    Args:
+        col (str): The name of the column for which value counts should be calculated.
+        dataframe (pl.DataFrame, optional): The Polars DataFrame on which the operation should be performed.
+                                            Defaults to the global 'df' variable.
+        proportion_col_alias (str, optional): The alias name for the proportion column. Defaults to 'proportion'.
+        to_pandas (bool, optional): Whether to convert the result to a Pandas DataFrame. Defaults to False.
+
+    Returns:
+        pl.DataFrame or pd.DataFrame: A DataFrame containing the unique values in the specified column, their respective
+                                      counts, and their proportions (as a percentage of the total number of rows).
+                                      The result is a Polars DataFrame by default, but can be returned as a Pandas DataFrame
+                                      if `to_pandas=True`.
+
+    Example:
+        # Sample DataFrame
+        df = pl.DataFrame({
+            "category": ["A", "B", "A", "C", "B", "B", "C", "A", "A"]
+        })
+
+        # Usage of the function
+        result = value_counts_with_proportion(col="category", dataframe=df)
+        print(result)
+
+    Output:
+        shape: (3, 3)
+        ┌─────────┬────────┬────────────┐
+        │ category│ count  │ proportion │
+        │ ---     │ ---    │ ---        │
+        │ str     │ i64    │ f64        │
+        ├─────────┼────────┼────────────┤
+        │ A       │ 4      │ 0.44       │
+        │ B       │ 3      │ 0.33       │
+        │ C       │ 2      │ 0.22       │
+        └─────────┴────────┴────────────┘
+
+    Notes:
+        - The function uses `value_counts()` to compute the frequency of each unique value in the specified column.
+        - The proportions are calculated by dividing the count of each unique value by the total number of rows (`df.height`).
+        - The proportions are rounded to 2 decimal places.
+        - The function supports parallel processing for faster execution on large datasets.
+    """
+    # Compute value counts with proportions
+    sorted_df_with_prop = dataframe[col].value_counts(
+        sort=True,
+        parallel=True,
+    ).with_columns(
+        (pl.col('count') / dataframe.height).round(2).alias(proportion_col_alias)
+    )
+
+    # Return as Pandas DataFrame if to_pandas=True, else return Polars DataFrame
+    return sorted_df_with_prop.to_pandas() if to_pandas else sorted_df_with_prop
 
 
 # ## Cleaning `brand`
@@ -132,16 +198,11 @@ print(df.columns)
 # - **Inconsistent formatting**: Some entries like `Dell Inc` are not captured under the main brand `Dell` due to inconsistent formatting. Similar things occur to other top brands.
 # - **Multibrand categories**: Some entries represent several brands, like `Dell / HP / Lenovo` or `Apple / LG`
 
-# In[7]:
+# In[ ]:
 
 
 # Taking a look at the frequency of each brand: total count and proportion
-df['brand'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='brand')
 
 
 # ### **Reformatting `brand`:**
@@ -152,7 +213,7 @@ df['brand'].value_counts(
 # - **Replacing Uncertain Values:** We also handle special cases where the data might have uncertain or irrelevant values (e.g., a "?" for unknown brands), replacing them with more meaningful terms like "unbranded" or "unknown."
 # 
 
-# In[8]:
+# In[ ]:
 
 
 # Define a mapping to replace certain placeholder values with more meaningful labels.
@@ -186,7 +247,7 @@ df = df.with_columns(
 # By applying these steps, we ensure that any variations or inconsistencies in the brand names are correctly mapped to the top brands, improving the consistency and accuracy of our analysis.
 # 
 
-# In[9]:
+# In[ ]:
 
 
 # Identify the top 5 most frequent brands in the dataset.
@@ -239,13 +300,11 @@ df = df.with_columns(
 )
 
 
-# In[10]:
+# In[ ]:
 
 
 # Taking another look at the frequency of each brand: total count and proportion
-df['brand_clean'].value_counts().with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-).sort(by='count', descending=True)
+value_counts_with_proportion(dataframe=df, col='brand_clean')
 
 
 # Observations:
@@ -258,7 +317,7 @@ df['brand_clean'].value_counts().with_columns(
 # - **Inconsistent format**: The cost of a laptop might be fixed (e.g: `880`) or a range (e.g: `from 500 to 999`)
 # - **Bad typing**: `price` is currently a categorical (`String`) variable, due to commas, whitespaces and symbols. To use this data effectively for statistical models, we **MUST CONVERT** it into **NUMERICAL**, removing currency symbols and handling text-based variations like ranges.
 
-# In[11]:
+# In[ ]:
 
 
 # Taking a look at the first 5 records from the `price` column, as is
@@ -278,7 +337,7 @@ df['price'].head(n=10)
 # - **Ensuring Proper Data Types:** After cleaning, we cast the extracted price values to `Float64`, making them compatible with statistical models and numerical computations.
 # 
 
-# In[12]:
+# In[ ]:
 
 
 df = df.with_columns(
@@ -303,16 +362,11 @@ df.select(
 
 # ## Cleaning `rating` & `ratings_count`
 
-# In[13]:
+# In[ ]:
 
 
 # Taking a look at the frequency of each rating: total count and proportion
-df['rating'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='rating')
 
 
 # Observations:
@@ -320,16 +374,11 @@ df['rating'].value_counts(
 # - **Strong positive bias**: Ratings are overwhelmingly positive, with **5 out of 5 stars (2%)** and **4.5 out of 5 stars (2%)** making up nearly all non-null values. Only **5 instances** have ratings of **3 stars or lower**, making it difficult to assess dissatisfaction trends.
 # - **Possible numerical conversion**: The `rating` column is currently a String but can be converted into an `Int` **five_star_scale** variable for analysis.
 
-# In[14]:
+# In[ ]:
 
 
 # Taking a look at the frequency of each rating count: total count and proportion
-df['ratings_count'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='ratings_count')
 
 
 # Observations:
@@ -340,7 +389,7 @@ df['ratings_count'].value_counts(
 # 
 # In this step, we transform the `rating` variable to variable `five_star_scale_rating` ( which, as its name implies, is a numerical variable ranging from 1-5; representing the product rating on a five-star scale) as well as clean its format (replacing spaces / decimal points with underscores) and assign the result to `rating_clean`.
 
-# In[15]:
+# In[ ]:
 
 
 # Define the regex pattern for extracting numeric values (including decimals)
@@ -371,7 +420,7 @@ df = df.with_columns(
 
 # Now, we inspect our newly created `rating_clean` & `five_star_scale_rating_clean` variables, and compare them to the original `rating` variable
 
-# In[16]:
+# In[ ]:
 
 
 rating_columns = ('rating', 'rating_clean', 'five_star_scale_rating_clean')
@@ -392,7 +441,7 @@ df.select(
 # 
 # The `ratings_count` column is correctly parsed as a numerical variable, but we can shrink it, as its range is very small (from `1` to `1533`), as we can see in the summary statistics below.
 
-# In[17]:
+# In[ ]:
 
 
 # Summary statistics the `ratings_count` variable
@@ -401,7 +450,7 @@ df.select(
 ).describe()
 
 
-# In[18]:
+# In[ ]:
 
 
 # Shrinking the datatype for the `ratings_count` column
@@ -414,7 +463,7 @@ df = df.with_columns(
 
 # Now, we can see the result of the shrinkage, which transformed the data type from `Int64` to `Int16`:
 
-# In[19]:
+# In[ ]:
 
 
 ratings_count_columns = ['ratings_count', 'ratings_count_clean']
@@ -432,23 +481,18 @@ dict(ratings_count_columns_dtypes)
 # - **`condition_label`**: A categorical label which represents the condition of a laptop (e.g: `new`, `used`, `certified_refurbished`)
 # - **`condition_description`**: A description for the `condition_label` (e.g: `A brand-new, unused, unopened laptop...`)
 
-# In[20]:
+# In[ ]:
 
 
 # Taking a look at the values counts for the `condition` column
-df['condition'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='condition')
 
 
 # Observations:
 # - **Similar categories**: Labels `UsedAn item that has been used previously` and `Used: An item that has been used previously` seem to contain duplicate or nearly identical information but are represented differently. Similar things occur for other labels, such as `For parts or not working`. These discrepancies may need to be cleaned and consolidated into one label.
 # - **Bad formatting**: A considerable amount of labels show formatting issues (e.g., "UsedAn item...") or seem to be concatenated with additional descriptions. This would require text processing to standardize the condition labels and improve consistency.
 
-# In[21]:
+# In[ ]:
 
 
 # Creating a dictionary which represents the condition labels and descriptions
@@ -490,7 +534,7 @@ condition_replace_map = {
 }
 
 
-# In[22]:
+# In[ ]:
 
 
 # Creating a function to map condition values to a condition dictionary, which represents labels (e.g: `New`) as keys and description as values (e.g: `A brand-new, unused item...`).
@@ -528,7 +572,7 @@ def map_condition(value: str, condition_dict: dict[str, str] = condition_replace
 # - **Mapping conditions**: Repeated labels with different formats, such as `UsedAn item that has been used previously` and `Used: An item that has been used previously` are mapped to a single `condition_label` (`'Used'`) which helps us achieve a better label representation by getting rid of different categories that represent the same status (`Used`, `New`, etc.).
 # 
 
-# In[23]:
+# In[ ]:
 
 
 # Transforming the dataframe, creating the `condition_label` and `condition_description` variables
@@ -551,7 +595,7 @@ LazyFrame.show_graph(df_lazy_conditions)
 
 # Here we take a look at the values from our `condition` column, and their correspondent **condition labels** and **condition descriptions**.
 
-# In[24]:
+# In[ ]:
 
 
 # Selecting all unique values for condition, and their soon-to-be assigned condition labels and condition descriptions
@@ -573,7 +617,7 @@ df_lazy_conditions.unique(
 # - **Standardizing format:** Replacing occurrences hyphens and whitespaces with an underscore (`_`), making the labels more consistent and clean.
 # 
 
-# In[25]:
+# In[ ]:
 
 
 # Reformatting `condition_label_clean` and `condition_description_clean`: replacing blank spaces for underscores and lowercasing
@@ -599,16 +643,11 @@ df.unique(
 
 # Finally, we take a look at the new `condition_label` variable and its value counts:
 
-# In[26]:
+# In[ ]:
 
 
 # Taking a look at the values counts for the `condition_label_clean` column
-df['condition_label_clean'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='condition_label_clean')
 
 
 # Observations:
@@ -620,16 +659,11 @@ df['condition_label_clean'].value_counts(
 # - **Unknown values**: There's an abundance of brands with very low frequencies, or unknown values (like `?` or `Does not apply` or `no` or `none`).
 # 
 
-# In[27]:
+# In[ ]:
 
 
 # Taking a look at the values counts for the `processor` column
-df['processor'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='processor')
 
 
 # Observations:
@@ -645,7 +679,7 @@ df['processor'].value_counts(
 # - **Consistent Formatting:** We ensure all processor names are in lowercase, and we remove any unnecessary spaces or punctuation that could create inconsistencies. (transforming `Intel core - 7th gen.` into `intel_core_7th_gen`).
 # - **Replacing Uncertain Values:** We also handle special cases where the data might have uncertain or irrelevant values (e.g., `?` or `no`), replacing them with more meaningful values such as `unknown` or `not_applicable`.
 
-# In[28]:
+# In[ ]:
 
 
 # Define a mapping to handle various non-standard or missing values in the 'processor' column.
@@ -674,7 +708,7 @@ df.select(
 ).head(n=10)
 
 
-# In[29]:
+# In[ ]:
 
 
 # Taking a look at the poorly formatted `processor` values, with their correspondent values in `processor_clean`
@@ -693,30 +727,20 @@ df.select(
 
 # Finally, we inspect visually our newly created `processor_clean` variable:
 
-# In[30]:
+# In[ ]:
 
 
 # Taking a look the new `processor_clean` column and its value counts
-df['processor_clean'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='processor_clean')
 
 
 # ## Cleaning `screen_size`
 
-# In[31]:
+# In[ ]:
 
 
 # Screen size value counts and their proportion
-df['screen_size'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-).to_pandas()
+value_counts_with_proportion(dataframe=df, col='screen_size', to_pandas=True)
 
 
 # ### Extracting inches from `screen_size`
@@ -725,7 +749,7 @@ df['screen_size'].value_counts(
 # 
 # In this way, we can perform further analysis, visualization and numerical computations on the screen size, ensuring that we no longer have to deal with mixed formats.
 
-# In[32]:
+# In[ ]:
 
 
 # Define the regex pattern to extract numeric values (floating point or integer) from screen_size column
@@ -744,7 +768,7 @@ df['screen_size_inches_clean'].head(n=10)
 
 # We can now take a look at the summary statistics for the new `screen_size_inches` variable
 
-# In[33]:
+# In[ ]:
 
 
 # Looking at the summary statistics for the `screen_size_inches` variable
@@ -760,7 +784,7 @@ df['screen_size_inches_clean'].describe()
 # 
 # We're interested in correcting the outliers in the `screen_size_inches` column, as the maximum value is that of a `1000` inches, which makes very little sense. We'll start by visualizing the top values from that column, to see whether we have several outliers or this is just the product of an error in the data extraction process:
 
-# In[34]:
+# In[ ]:
 
 
 df['screen_size_inches_clean'].filter(
@@ -773,7 +797,7 @@ df['screen_size_inches_clean'].filter(
 # We immediately realize we have just two values of `1000` inches, which are heavily skewing the data. The rest of the distribution lies between the range of `2-18` inches, which is sensible.
 # In order to address this, we need to find where these values are originally located. Which is, the `screen_size` column:
 
-# In[35]:
+# In[ ]:
 
 
 df.select('screen_size').filter(pl.col('screen_size').str.contains('1000'))
@@ -785,7 +809,7 @@ df.select('screen_size').filter(pl.col('screen_size').str.contains('1000'))
 # 
 # Hence, we replace these unreasonable values with `None` to ensure that the data used for analysis remains consistent and meaningful.
 
-# In[36]:
+# In[ ]:
 
 
 # Replace rows where screen_size_inches_clean is equal to a thousand (which is incorrect data)
@@ -806,7 +830,7 @@ df['screen_size_inches_clean'].filter(
 
 # Now, we see that the maximum value for the *screen size in inches* variable make a lot more sense. We proceed to visualize its summary statistics once again:
 
-# In[37]:
+# In[ ]:
 
 
 # Looking back at the summary statistics for the `screen_size_inches` variable
@@ -822,16 +846,11 @@ df['screen_size_inches_clean'].describe()
 # - Some entries represent multiple colors in a single field (e.g: `Black & Silver`).
 # - Most entries have very little frequency, appearing a single time in the entire column. These rare values might be considered noise (and grouped into a rare label category, such as `rare` or `other`) or might to be grouped into broader categories by using the color label (such as grouping `Mica Silver` and `Ice Blue` into a broader `Blue` category).
 
-# In[38]:
+# In[ ]:
 
 
 # Color value counts and their proportion
-df['manufacturer_color'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='manufacturer_color')
 
 
 # Observations:
@@ -845,16 +864,11 @@ df['manufacturer_color'].value_counts(
 # - Color contains data in spanish, as evidenced by some of its values: `borgoña` (burgundy), `blanco` (white) or `negro` (black).
 # - Some entries represent multiple colors in a single field (e.g: `Black/ Blue / Sandtone / Platinum`).
 
-# In[39]:
+# In[ ]:
 
 
 # Color value counts and their proportion
-df['color'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='color')
 
 
 # Observations:
@@ -867,7 +881,7 @@ df['color'].value_counts(
 # - **Reducing cardinality:** The color data may contain variations or inconsistencies in how colors are labeled (e.g., `multi-color` vs. `multicolor`). We address this by grouping similar colors under consistent labels, reducing the number of unique color categories. We also map color variations (e.g, `sky blue`, `light blue`) to a single color (`blue`).
 # - **Standardizing format:** Check whether the color listed for each item matches a set of predefined valid colors. Ensures that all color data follows a consistent format.
 
-# In[40]:
+# In[ ]:
 
 
 # List of valid color values for consistency checks
@@ -895,7 +909,7 @@ color_replace_map = {
 color_replace_map
 
 
-# In[41]:
+# In[ ]:
 
 
 def clean_color(color: str, color_list: list[str] = valid_color_values) -> str:
@@ -925,7 +939,7 @@ def clean_color(color: str, color_list: list[str] = valid_color_values) -> str:
         return 'other'
 
 
-# In[42]:
+# In[ ]:
 
 
 # Creates an expression to search for valid colors
@@ -964,7 +978,7 @@ df.select(
 
 # We further inspect the original unique values of the `manufacturer_color` column, and its correspondent mapping in `manufacturer_color_clean`:
 
-# In[43]:
+# In[ ]:
 
 
 # Taking a look at all the transformed color labels
@@ -987,7 +1001,7 @@ df.select(
 # - **Reducing cardinality:** The color data may contain variations or inconsistencies in how colors are labeled (e.g., `multi-color` vs. `multicolor`). We address this by grouping similar colors under consistent labels, reducing the number of unique color categories. We also map color variations (e.g, `sky blue`, `light blue`) to a single color (`blue`).
 # - **Standardizing format:** check whether the color listed for each item matches a set of predefined valid colors. Ensures that all color data follows a consistent format.
 
-# In[44]:
+# In[ ]:
 
 
 # Prepare the color column by converting to lowercase and applying the color replacements
@@ -1020,7 +1034,7 @@ df.select(
 
 # We further inspect the original unique values of the `color` column, and its correspondent mapping in `color_clean`:
 
-# In[45]:
+# In[ ]:
 
 
 # Taking a look at all the transformed color labels
@@ -1039,16 +1053,11 @@ df.select(
 
 # We can also visualize its new value counts:
 
-# In[46]:
+# In[ ]:
 
 
 # Color cleaned value counts and their proportion
-df['color_clean'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='color_clean')
 
 
 # Observations:
@@ -1056,7 +1065,7 @@ df['color_clean'].value_counts(
 
 # ## Cleaning `ram_size`, `ssd_capacity` & `hard_drive_capacity`
 
-# In[47]:
+# In[ ]:
 
 
 def find_capacity(split_str: str, unit_match_str: str, unit_name: str) -> Tuple[Optional[float], str]:
@@ -1111,7 +1120,7 @@ def extract_capacity_unit(capacity: str) -> str:
     return clean_capacity_from_str(capacity)[1]
 
 
-# In[48]:
+# In[ ]:
 
 
 df = df.with_columns(
@@ -1132,7 +1141,7 @@ df.select(
 )
 
 
-# In[49]:
+# In[ ]:
 
 
 df = df.with_columns(
@@ -1153,7 +1162,7 @@ df.select(
 )
 
 
-# In[50]:
+# In[ ]:
 
 
 df = df.with_columns(
@@ -1176,18 +1185,13 @@ df.select(
 
 # ## Cleaning `gpu`
 
-# In[51]:
+# In[ ]:
 
 
-df['gpu'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='gpu')
 
 
-# In[52]:
+# In[ ]:
 
 
 def map_gpu_type(gpu_str: str) -> str:
@@ -1235,7 +1239,7 @@ def map_gpu_type(gpu_str: str) -> str:
         return "other"
 
 
-# In[53]:
+# In[ ]:
 
 
 df = df.with_columns(
@@ -1244,26 +1248,18 @@ df = df.with_columns(
     .alias("gpu_type_clean")
 )
 
-df['gpu_type_clean'].value_counts(
-    sort=True,
-    parallel=True,
-)
+value_counts_with_proportion(dataframe=df, col='gpu_type_clean')
 
 
 # ## Cleaning `processor_speed`
 
-# In[54]:
+# In[ ]:
 
 
-df['processor_speed'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='processor_speed')
 
 
-# In[55]:
+# In[ ]:
 
 
 # Helper function to extract the processor speed unit (GHz, MHz, or unknown)
@@ -1335,7 +1331,7 @@ def extract_processor_speed_value(processor_speed: str) -> Optional[float]:
         return None
 
 
-# In[56]:
+# In[ ]:
 
 
 df = df.with_columns(
@@ -1351,26 +1347,16 @@ df = df.with_columns(
 )
 
 
-# In[57]:
+# In[ ]:
 
 
-df['processor_speed_clean'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='processor_speed_clean')
 
 
-# In[58]:
+# In[ ]:
 
 
-df['processor_speed_unit_clean'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='processor_speed_unit_clean')
 
 
 # ## Cleaning `type`
@@ -1384,15 +1370,10 @@ df['processor_speed_unit_clean'].value_counts(
 # 
 # Therefore, it is essential to clean this variable by *standardizing* the names, *handling missing values* & *grouping* similar types.
 
-# In[59]:
+# In[ ]:
 
 
-df['type'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='type')
 
 
 # We will clean the variable as aforementioned, by:
@@ -1401,7 +1382,7 @@ df['type'].value_counts(
 # - **Grouping similar types** into broader categories to ensure consistency and ease of analysis (e.g: `chromebook` and `notebooks` both get mapped to the general label `laptop`)).
 # 
 
-# In[60]:
+# In[ ]:
 
 
 def map_type(type_str: str) -> str:
@@ -1461,7 +1442,7 @@ def map_type(type_str: str) -> str:
     return 'other'
 
 
-# In[61]:
+# In[ ]:
 
 
 df = df.with_columns(
@@ -1471,15 +1452,10 @@ df = df.with_columns(
 )
 
 
-# In[62]:
+# In[ ]:
 
 
-df['type_clean'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='type_clean')
 
 
 # Observations:
@@ -1490,18 +1466,13 @@ df['type_clean'].value_counts(
 
 # ## Cleaning `release_year`
 
-# In[63]:
+# In[ ]:
 
 
-df['release_year'].value_counts(
-    sort=True,
-    parallel=True
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='release_year')
 
 
-# In[64]:
+# In[ ]:
 
 
 df = df.with_columns(
@@ -1512,31 +1483,21 @@ df = df.with_columns(
 )
 
 
-# In[65]:
+# In[ ]:
 
 
-df['release_year_clean'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='release_year_clean')
 
 
 # ## Cleaning `maximum_resolution`
 
-# In[66]:
+# In[ ]:
 
 
-df['maximum_resolution'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='maximum_resolution')
 
 
-# In[67]:
+# In[ ]:
 
 
 # Dictionary mapping resolution types to their corresponding width and height values
@@ -1585,7 +1546,7 @@ def try_get_resolution_value(resolution: str, resolution_dic: dict[str, list[str
     return 'unknown'
 
 
-# In[68]:
+# In[ ]:
 
 
 def extract_width_from_resolution_str(resolution: str,
@@ -1627,7 +1588,7 @@ def extract_height_from_resolution_str(resolution: str,
     return try_get_resolution_value(resolution, resolution_dic, index=1)
 
 
-# In[69]:
+# In[ ]:
 
 
 df = df.with_columns(
@@ -1650,26 +1611,16 @@ df = df.with_columns(
 )
 
 
-# In[70]:
+# In[ ]:
 
 
-df['display_width_clean'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='display_height_clean')
 
 
-# In[71]:
+# In[ ]:
 
 
-df['display_height_clean'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='display_width_clean')
 
 
 # ## Cleaning `model`
@@ -1678,7 +1629,13 @@ df['display_height_clean'].value_counts(
 # 
 # Hence, we clean and standardize these model names to ensure consistency and meaningful analysis.
 
-# In[72]:
+# In[ ]:
+
+
+value_counts_with_proportion(dataframe=df, col='model')
+
+
+# In[ ]:
 
 
 # Cleaning and standardizing the `model` variable
@@ -1708,16 +1665,11 @@ df.select(
 # 
 # We now proceed to take a further look at the value counts of the `os` variable:
 
-# In[73]:
+# In[ ]:
 
 
 # Operating system value counts and their proportion.
-df['os'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='os')
 
 
 # Observations:
@@ -1727,7 +1679,7 @@ df['os'].value_counts(
 
 # We now map the `os` variable to common categories: `linux`, `windows`, `chrome`, `android`, `mac` and `other`.
 
-# In[74]:
+# In[ ]:
 
 
 # Define a function that maps the OS types based on the text
@@ -1783,7 +1735,7 @@ def map_os_type(os: str) -> str:
         return 'other'
 
 
-# In[75]:
+# In[ ]:
 
 
 df = df.with_columns(
@@ -1793,12 +1745,37 @@ df = df.with_columns(
 )
 
 # Operating system cleaned value counts and their proportion.
-df['os_clean'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
+value_counts_with_proportion(dataframe=df, col='os_clean')
+
+
+# ## Cleaning `features`
+
+# In[ ]:
+
+
+# Operating system cleaned value counts and their proportion.
+value_counts_with_proportion(dataframe=df, col='features')
+
+
+# In[ ]:
+
+
+df = df.with_columns(
+    pl.col('features')
+    .str.to_lowercase()
+    # .str.replace_all(r',,{2,}', ',')  # Replaces multiple commas with a single comma
+    .str.replace_all(r'\s+', '')
+    #.str.replace_all('', '_')
+    .alias('features_clean')
 )
+
+df['features_clean'].head(n=10)
+
+
+# In[ ]:
+
+
+value_counts_with_proportion(dataframe=df, col='features_clean')
 
 
 # ## Cleaning `country_region_of_manufacturer`
@@ -1807,16 +1784,11 @@ df['os_clean'].value_counts(
 # 
 # We'll start by taking a look at its value counts:
 
-# In[76]:
+# In[ ]:
 
 
 # Country region of manufacturer value counts and their proportion.
-df['country_region_of_manufacturer'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='country_region_of_manufacturer')
 
 
 # Observations:
@@ -1827,7 +1799,7 @@ df['country_region_of_manufacturer'].value_counts(
 # ### Reformatting `country_region_of_manufacturer`
 # We now proceed to reformat the `country_region_of_manufacturer` variable, by doing string operations (such as lowercasing, replacing all whitespaces with underscores) and assigning all `null` values to the `unknown` category.
 
-# In[77]:
+# In[ ]:
 
 
 df = df.with_columns(
@@ -1845,16 +1817,11 @@ df.select(
 )
 
 
-# In[78]:
+# In[ ]:
 
 
 # Country of manufacturer cleaned value counts and their proportion.
-df['country_of_manufacturer_clean'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='country_of_manufacturer_clean')
 
 
 # ## Cleaning `storage_type`
@@ -1869,16 +1836,11 @@ df['country_of_manufacturer_clean'].value_counts(
 # 
 # We are cleaning this variable to standardize the labels, group similar values, and handle missing or incorrectly formatted data. This will allow for more accurate analysis and ensure the column is more usable in subsequent processes.
 
-# In[79]:
+# In[ ]:
 
 
 # Storage type value counts and their proportion.
-df['storage_type'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='storage_type')
 
 
 # Observations:
@@ -1886,7 +1848,7 @@ df['storage_type'].value_counts(
 # - **Multiple Formats**: The data includes various representations for similar storage types (e.g., "SSD", "SSD (Solid State Drive)", "Solid State Drive"), which could lead to inconsistencies. These variations need to be standardized and grouped for better analysis and modeling.
 # - **Uncommon and Irrelevant Entries**: There are a few outlier values such as "Touchscreen", "256GBSSD", and "SSD or SSD", which seem irrelevant to the `storage_type` category. These should be reviewed and cleaned accordingly to ensure data quality.
 
-# In[80]:
+# In[ ]:
 
 
 def map_storage_type(string: str) -> str:
@@ -1944,7 +1906,7 @@ def map_storage_type(string: str) -> str:
         return 'other'
 
 
-# In[81]:
+# In[ ]:
 
 
 df = df.with_columns(
@@ -1960,16 +1922,11 @@ df.select(
 
 # Now we can analyze the value counts from our new `storage_type_clean` variable, expecting a big reduction in cardinality and a standard formatting for categorical labels.
 
-# In[82]:
+# In[ ]:
 
 
 # Storage type cleaned value counts and their proportion.
-df['storage_type_clean'].value_counts(
-    sort=True,
-    parallel=True,
-).with_columns(
-    (pl.col('count') / df.height).round(2).alias('proportion')
-)
+value_counts_with_proportion(dataframe=df, col='storage_type_clean')
 
 
 # Observations:
