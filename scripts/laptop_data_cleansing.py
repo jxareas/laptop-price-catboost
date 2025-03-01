@@ -42,6 +42,7 @@ from polars import LazyFrame
 
 # Data source location
 DATA_SOURCE_PATH = '../data/ebay_laptops_and_notebooks.csv'
+DATA_OUTPUT_LOCATION_PATH = '../data/ebay_laptops_and_notebooks_cleaned.csv'
 
 
 # ## Data Exploration
@@ -683,6 +684,37 @@ value_counts_with_proportion(dataframe=df, col='condition_label_clean')
 # - **New label frequencies**: After cleansing, the most common conditions are `used` (42%) and `new` (29%), which account for the majority of the dataset (71%).
 # - **Lower cardinality**: We have a considerably minor number of unique values within our `condition_label` variable (**just 10 unique values**), than we did with `condition`, due to the proper cleansing of the data.
 
+# ## Cleaning `seller_note`
+
+# In[ ]:
+
+
+value_counts_with_proportion(dataframe=df, col='seller_note', to_pandas=True)
+
+
+# Observations:
+# - **High cardinality**: As this variable represents notes written in natural language, by the seller, specifying any kind of details, each note is unique.
+# - **Feature engineering potential**: It might be of interest to do sentiment analysis in order to categorize this variable given its sentiment.
+
+# In[ ]:
+
+
+df = df.with_columns(
+    pl.col('seller_note')
+    .str.strip_chars()
+    .alias('seller_note_clean')
+)
+
+df.select(
+    'seller_note_clean'
+).head(n=10)
+
+
+# We decide to leave the `seller_note` column with minimal alteration, simply trimming leading and trailing characters, as it is a variable that contains free-text, natural language information, making it inherently non-standardizable. It is filled with subjective, context-dependent, and unstructured data. This is why it is not easily standardize without potentially losing valuable information.
+# 
+# Nonetheless, proper use of natural language processing (particularly sentiment analysis) would be useful in order to extract consistent insights from such data.
+# 
+
 # ## Cleaning `processor`
 # - **Formatting**: Similarly, as done with other variables, we'll reformat the values, so that `Intel Celeron` is transformed into `intel_celeron`.
 # - **Unknown values**: There's an abundance of brands with very low frequencies, or unknown values (like `?` or `Does not apply` or `no` or `none`).
@@ -1213,11 +1245,64 @@ value_counts_with_proportion(dataframe=df, col='color_clean')
 # - **Lower cardinality and higher frequencies**: As a consequence of mapping colors into broader color categories and the rare category (`other`) the cardinality has decreased from more than 80 different colors to 20. This has also caused the increase in the proportion of several categories, such as `black` increasing from 15% to 19%.
 
 # ## Cleaning `ram_size`, `ssd_capacity` & `hard_drive_capacity`
+# 
+# ### **Understanding the Variables**
+# These three variables represent key hardware specifications of a laptop, which are crucial for performance assessment:
+# - **`ram_size`**: Represents the amount of Random Access Memory (RAM) available in the laptop, typically measured in gigabytes (GB). Higher RAM allows for better multitasking and performance.
+# - **`ssd_capacity`**: Indicates the storage capacity of the Solid-State Drive (SSD), measured in GB or TB. SSDs provide faster read/write speeds compared to traditional hard drives.
+# - **`hard_drive_capacity`**: Represents the storage capacity of traditional Hard Disk Drives (HDDs), also measured in GB or TB. HDDs are slower than SSDs but provide larger storage at a lower cost.
+# 
+# ### **Observations:**
+# - **Data Format Variability**: Storage and memory values can be represented in different formats (e.g., `8GB`, `16 GB`, `1 TB`, `256GB SSD`). Standardizing these formats ensures consistency.
+# - **Mixed Numerical and Text Values**: Some entries include both numerical values and units (`GB`, `TB`), which need to be extracted and converted into a standardized numeric format.
+# - **NULL or Missing Data**: Some laptops may have missing values for these fields. If a laptop has an `ssd_capacity`, but no `hard_drive_capacity`, it likely has only an SSD and vice versa.
+# - **Overlapping Storage Types**: Some entries might list both `ssd_capacity` and `hard_drive_capacity`, indicating hybrid storage (both SSD and HDD). We need to ensure such cases are handled properly.
+# - **Extreme or Unusual Values**: Some listings might contain errors, such as `4GB SSD` (which is likely incorrect). Detecting and handling anomalies is essential.
 
 # In[ ]:
 
 
-def find_capacity(split_str: str, unit_match_str: str, unit_name: str) -> Tuple[Optional[float], str]:
+value_counts_with_proportion(dataframe=df, col='ram_size')
+
+
+# In[ ]:
+
+
+value_counts_with_proportion(dataframe=df, col='ssd_capacity')
+
+
+# In[ ]:
+
+
+value_counts_with_proportion(dataframe=df, col='hard_drive_capacity')
+
+
+# ### **Reformatting & Cleaning Process:**
+# To clean and standardize these variables, we apply the following steps:
+# - **Extract Numeric Values**: Strip out text (e.g., `GB`, `TB`) and convert values into a numerical format for consistency.
+# - **Extract Units**: Extract the unit of data being used to measure the size (e.g., `GB`, `TB`, `MB`).
+# 
+# By applying these transformations, we ensure that these key specifications are cleaned, standardized, and usable for further analysis or modeling.
+# 
+# 
+
+# In[ ]:
+
+
+def find_size(split_str: str, unit_match_str: str, unit_name: str) -> Tuple[Optional[float], str]:
+    """
+    Extracts the numerical value of a given storage capacity from a string.
+
+    Args:
+        split_str (str): The cleaned and lowercased capacity string.
+        unit_match_str (str): The unit identifier to match (e.g., 'gb', 'tb', 'mb').
+        unit_name (str): The readable name of the unit.
+
+    Returns:
+        Tuple[Optional[float], str]: A tuple containing:
+            - The extracted capacity as a float, or None if parsing fails.
+            - The unit name.
+    """
     try:
         if unit_match_str in split_str:
             capacity = re.sub('[a-z]', '', split_str[:split_str.find(unit_match_str)])
@@ -1227,7 +1312,18 @@ def find_capacity(split_str: str, unit_match_str: str, unit_name: str) -> Tuple[
         return None, unit_name
 
 
-def clean_capacity_from_str(capacity: str) -> Tuple[Optional[float], str]:
+def clean_size_from_str(capacity: str) -> Tuple[Optional[float], str]:
+    """
+    Cleans and extracts storage capacity from a raw string.
+
+    Args:
+        capacity (str): The raw storage capacity string.
+
+    Returns:
+        Tuple[Optional[float], str]: A tuple containing:
+            - The extracted storage capacity as a float, or None if it cannot be determined.
+            - The detected unit (e.g., 'gigabytes', 'terabytes', 'megabytes', or 'unknown').
+    """
     # If capacity is none or a blank string
     if capacity is None or not capacity.strip():
         return None, 'unknown'
@@ -1239,14 +1335,14 @@ def clean_capacity_from_str(capacity: str) -> Tuple[Optional[float], str]:
 
     # Checks for gigabytes
     if 'gb' in split_str:
-        return find_capacity(split_str=split_str, unit_match_str='gb', unit_name='gigabytes')
+        return find_size(split_str=split_str, unit_match_str='gb', unit_name='gigabytes')
     # Checks for terabytes
     elif 'tb' in split_str:
         capacity_in_tb = split_str[split_str.find('tb') - 1:split_str.find('tb')]
         return float(capacity_in_tb), 'terabytes'
     # Checks for megabytes
     elif 'mb' in split_str:
-        return find_capacity(split_str=split_str, unit_match_str='mb', unit_name='megabytes')
+        return find_size(split_str=split_str, unit_match_str='mb', unit_name='megabytes')
     # Checks for capacity values without a unit (e.g., '128', '389', or '128 SSD')
     else:
         # Remove alphabetic characters (like 'SSD') from the string
@@ -1262,29 +1358,48 @@ def clean_capacity_from_str(capacity: str) -> Tuple[Optional[float], str]:
 
 
 def extract_capacity_value(capacity: str) -> float:
-    return clean_capacity_from_str(capacity)[0]
+    """
+    Extracts the numerical value of a storage capacity from a given string.
+
+    Args:
+        capacity (str): The raw storage capacity string.
+
+    Returns:
+        float: The extracted storage capacity as a float, or None if parsing fails.
+    """
+    return clean_size_from_str(capacity)[0]
 
 
 def extract_capacity_unit(capacity: str) -> str:
-    return clean_capacity_from_str(capacity)[1]
+    """
+    Extracts the unit of a storage capacity from a given string.
+
+    Args:
+        capacity (str): The raw storage capacity string.
+
+    Returns:
+        str: The extracted unit ('gigabytes', 'terabytes', 'megabytes', or 'unknown').
+    """
+    return clean_size_from_str(capacity)[1]
 
 
 # In[ ]:
 
 
+# Extracting the hard drive size (numerical) and its unit
 df = df.with_columns(
     pl.col('hard_drive_capacity')
     .str.to_lowercase()
     .map_elements(function=extract_capacity_value, return_dtype=pl.Float64)
-    .alias('hard_drive_capacity_clean'),
+    .alias('hard_drive_size_clean'),
     pl.col('hard_drive_capacity')
     .str.to_lowercase()
     .map_elements(function=extract_capacity_unit, return_dtype=pl.String)
-    .alias('hard_drive_capacity_unit_clean')
+    .alias('hard_drive_size_unit_clean')
 )
 
 df.select(
-    'hard_drive_capacity', 'hard_drive_capacity_clean', 'hard_drive_capacity_unit_clean'
+    'hard_drive_capacity', 'hard_drive_size_clean', 'hard_drive_size_unit_clean'
 ).unique(
     subset='hard_drive_capacity'
 )
@@ -1318,27 +1433,36 @@ df = df.with_columns(
     pl.col('ssd_capacity')
     .str.to_lowercase()
     .map_elements(function=extract_capacity_value, return_dtype=pl.Float64)
-    .alias('ssd_capacity_clean'),
+    .alias('ssd_size_clean'),
     pl.col('ssd_capacity')
     .str.to_lowercase()
     .map_elements(function=extract_capacity_unit, return_dtype=pl.String)
-    .alias('ssd_capacity_unit_clean')
+    .alias('ssd_size_unit_clean')
 )
 
 df.select(
-    'ssd_capacity', 'ssd_capacity_clean', 'ssd_capacity_unit_clean'
+    'ssd_capacity', 'ssd_size_clean', 'ssd_size_unit_clean'
 ).unique(
     subset='ssd_capacity'
 )
 
 
 # ## Cleaning `gpu`
+# 
+# The `gpu` variable represents the graphics processing unit (GPU) present in each device. This is a crucial feature for determining the performance capabilities of a device, particularly for tasks like gaming, video editing, and AI computations.
 
 # In[ ]:
 
 
 value_counts_with_proportion(dataframe=df, col='gpu')
 
+
+# Observations:
+# - **Missing Values**: The most frequent entry in the dataset is `null` (3532 occurrences, ~53%). This means more than half of the dataset lacks GPU information, which might require imputation or categorization into a "Missing" category.
+# - **Inconsistent Naming and Variations**:
+#    - Multiple ways of writing the same GPU exist due to differences in formatting, spelling, and capitalization. Examples include:
+#      - "Intel HD Graphics 520" vs. "INTEL HD GRAPHICS 520" vs. "Intel(R) HD Graphics 520"
+#      - "Intel UHD Graphics 620" vs. "Carte graphique Intel UHD 620" vs. "Gr
 
 # In[ ]:
 
@@ -1401,12 +1525,19 @@ value_counts_with_proportion(dataframe=df, col='gpu_type_clean')
 
 
 # ## Cleaning `processor_speed`
+# 
+# The variable `processor_speed` represents the clock speed of a computer's processor, typically measured in GHz (gigahertz). It reflects how fast the processor can perform tasks, with higher values generally indicating faster performance. However, the variable in this dataset presents several challenges that need to be addressed during data cleaning:
 
 # In[ ]:
 
 
 value_counts_with_proportion(dataframe=df, col='processor_speed')
 
+
+# Observations:
+# - **Null Values**: There are null values present, which represent missing or unavailable data.
+# - **Inconsistent Formats**: The values are recorded in various formats, e.g., `2.60 GHz`, `2.60GHz`, `2.00-3.00GHz`, `Core 2 Duo Processor`, etc. These discrepancies need to be standardized.
+# - **Irrelevant Entries**: Some entries are not processor speeds at all (e.g., `Various`, `See Title/Description`, or `Good`).
 
 # In[ ]:
 
@@ -1611,12 +1742,19 @@ value_counts_with_proportion(dataframe=df, col='laptop_type_clean')
 # 
 
 # ## Cleaning `release_year`
+# 
+# The `release_year` variable represents the year when a laptop was originally released or refurbished. \
+# As this data was scraped from eBay listings, where sellers often provide information about the release year of the laptops. However, some of the values are ambiguous, indicating either refurbishment dates, invalid data, or text labels that don't correspond to specific years.
 
 # In[ ]:
 
 
 value_counts_with_proportion(dataframe=df, col='release_year')
 
+
+# ### Observations:
+# - The `null` values make up a significant portion of the data (88%), indicating missing or unrecorded release year information.
+# - There are various non-standard values, such as `Refurbished in 2023`, `Any`, `N/a`, and even product names like `Acer Aspire V3-571G`. These values will need to be cleaned or mapped to a valid year or category.
 
 # In[ ]:
 
@@ -1635,13 +1773,27 @@ df = df.with_columns(
 value_counts_with_proportion(dataframe=df, col='release_year_clean')
 
 
+# Observations:
+# - **Standardization of release years**: The non-standard values (e.g., "Refurbished", "Any", "Acer Aspire V3-571G") have been removed, leaving only valid years. This improves the consistency and accuracy of the `release_year_clean` variable, now focusing solely on actual release years.
+# - **Persistence of some outlier years**: Some outlier years like `2024`, `2000`, and `2005` remain in the dataset.
+# 
+
 # ## Cleaning `maximum_resolution`
+# 
+# The `maximum_resolution` variable represents the display resolution of laptops listed on eBay, typically shown as a combination of width and height in pixels (e.g., "1920 x 1080" or "Full HD"). However, this column contains various inconsistencies, including multiple ways of representing resolutions, variations in spacing, and occasional non-resolution data (like "See Title/Description"). These inconsistencies can hinder analysis and require cleaning to standardize the values.
 
 # In[ ]:
 
 
 value_counts_with_proportion(dataframe=df, col='maximum_resolution')
 
+
+# Observations:
+# - **High Proportion of Missing Values**: The `null` values account for 63% of the dataset, indicating that a significant portion of listings does not provide resolution information. These null values will need to be handled appropriately, either by imputation or removal based on the analysis goals.
+# - **Multiple Representations of Resolution**: The same resolution is often written in various formats. For example:
+#    - `1920 x 1080` vs `1920x1080` vs `1920x1080 FHD` (all represent `Full HD`).
+#    - `HD`, `Full HD`, and other text-based representations for resolutions.
+# - **Outlier/Irrelevant Entries**: There are several non-resolution strings like `Like New` and `See Title/Description` that will not contribute to the analysis and need to be removed or mapped to a null value.
 
 # In[ ]:
 
@@ -1785,6 +1937,8 @@ df = df.with_columns(
 )
 
 
+# Now, we take a look at the newly created `display_heigth_clean` & `display_width_clean` variables:
+
 # In[ ]:
 
 
@@ -1920,6 +2074,10 @@ value_counts_with_proportion(dataframe=df, col='os_clean')
 
 
 # ## Cleaning `features`
+# 
+# The `features` column represents a collection of technical specifications or attributes related to devices in the dataset. Each entry in this column describes various characteristics of the device, such as connectivity options (e.g., Wi-Fi, Bluetooth), hardware features (e.g., SD Card), or other relevant capabilities that define the device's specifications.
+# 
+# Features such as "Wi-Fi" might appear in different forms (e.g., "Wi-Fi", "wi-fi", "WIFI"). Standardizing these variations into a single, consistent format (e.g., "wi-fi") will help in reducing redundancy and improving the quality of the dataset for analysis. If there are entries that are empty or `null`, this indicates that the device's features are not available. This could be due to incomplete data collection or missing information for certain devices.
 
 # In[ ]:
 
@@ -1927,6 +2085,10 @@ value_counts_with_proportion(dataframe=df, col='os_clean')
 # Operating system cleaned value counts and their proportion.
 value_counts_with_proportion(dataframe=df, col='features')
 
+
+# ### Observations:
+# - **Inconsistent Formatting**: The entries in `features` do not follow a consistent format, which can make analysis difficult. For example, some devices might list features like "Wi-Fi, Bluetooth, USB" while others might list them as "bluetooth, wifi, usb", causing inconsistency in labeling.
+# 
 
 # In[ ]:
 
@@ -1942,6 +2104,8 @@ df = df.with_columns(
 
 df['features_clean'].head(n=10)
 
+
+# Now we take a further look at the value counts for the new `features_clean` column:
 
 # In[ ]:
 
@@ -2102,3 +2266,30 @@ value_counts_with_proportion(dataframe=df, col='storage_type_clean')
 # - **Dominant Category**: The most frequent category is `ssd` (35.6%), which suggests that SSD is the predominant storage technology in the dataset, reflecting the growing trend of SSD usage in modern devices.
 # - **Reduced cardinality**: Cardinality was reduced from 45 different unique values to 6.
 # - **Minor Categories**: The categories `other` (0.01) and `hdd_or_ssd` (0.01) are very small, suggesting that these cases are very uncommon in the dataset.
+
+# ## Saving the data
+
+# In[ ]:
+
+
+clean_columns = [col for col in df.columns if col.endswith('_clean')]
+print(f'Total number of columns: {len(clean_columns)}')
+print(clean_columns)
+
+
+# We have created 31 columns, from the original 23, via this data cleaning process.
+
+# In[ ]:
+
+
+df_clean = df.select(clean_columns)
+df_clean.head(n=10)
+
+
+# Now, we'll export this dataset to a csv file, named `ebay_laptops_and_notebooks_cleaned.csv`.
+
+# In[ ]:
+
+
+df.select(clean_columns).write_csv(file=DATA_OUTPUT_LOCATION_PATH)
+
