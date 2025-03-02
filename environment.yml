@@ -118,6 +118,7 @@ dependencies:
   - jupyter_server=2.15.0=pyhd8ed1ab_0
   - jupyter_server_terminals=0.5.3=pyhd8ed1ab_1
   - jupyterlab=4.3.5=pyhd8ed1ab_0
+  - jupyterlab-plotly-extension=1.0.0=py_0
   - jupyterlab_pygments=0.3.0=pyhd8ed1ab_2
   - jupyterlab_server=2.27.3=pyhd8ed1ab_1
   - jupyterlab_widgets=3.0.13=pyhd8ed1ab_1
@@ -180,6 +181,7 @@ dependencies:
   - libtiff=4.7.0=hd9ff511_3
   - libutf8proc=2.10.0=h4c51ac1_0
   - libuuid=2.38.1=h0b41bf4_0
+  - libuv=1.50.0=hb9d3cd8_0
   - libwebp-base=1.5.0=h851e524_0
   - libxcb=1.17.0=h8a09558_0
   - libxcrypt=4.4.36=hd590300_1
@@ -200,6 +202,7 @@ dependencies:
   - ncurses=6.5=h2d0b736_3
   - nest-asyncio=1.6.0=pyhd8ed1ab_1
   - nlohmann_json=3.11.3=he02047a_1
+  - nodejs=22.12.0=hf235a45_0
   - notebook=7.3.2=pyhd8ed1ab_0
   - notebook-shim=0.2.4=pyhd8ed1ab_1
   - numpy=1.26.4=py312heda63a1_0

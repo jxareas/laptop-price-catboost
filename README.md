@@ -34,7 +34,6 @@ Here you can give instructions on how to set up your project locally: Installati
 ## 🦾 Technologies 🦾
 
 This section should list any major frameworks/libraries used to bootstrap your project.
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
