@@ -8,13 +8,13 @@
 # 
 # The dataset contains information about the laptop prices (possible variable of interest), brand, ratings, condition, as well as hardware information (processor, screen size, ram, etc).
 # 
-# <div style="text-align: center;">
+# <div align="center">
 # <img src="../assets/logos/ebay.png" width="250"/>
 # </div>
 
 # ## Loading Libraries
 # 
-# We are using **Polars** for data cleansing. Polars is a **fast**, ***parallel**, and **memory-efficient** DataFrame library written in *Rust*, designed for handling large datasets.
+# We are using **Polars** for data cleansing. Polars is a **fast**, **parallel**, and **memory-efficient** DataFrame library written in *Rust*, designed for handling large datasets.
 # 
 # It provides intuitive API operations for data manipulation, such as filtering, grouping, joining, and transforming data, all in a very efficient manner. Unlike other popular libraries like Pandas, Polars is optimized for performance and can handle larger datasets with significantly faster execution times.
 # During the data cleaning process, we will leverage Polars to:
@@ -25,7 +25,7 @@
 # 
 # Polars supports both eager and lazy execution modes, making it flexible for a variety of use cases.
 # 
-# <div style="text-align: center;">
+# <div align="center">
 # <img src="../assets/logos/polars.png"/>
 # </div>
 
@@ -42,7 +42,7 @@ from polars import LazyFrame
 
 # Data source location
 DATA_SOURCE_PATH = '../data/ebay_laptops_and_notebooks.csv'
-DATA_OUTPUT_LOCATION_PATH = '../data/ebay_laptops_and_notebooks_cleaned.csv'
+DATA_OUTPUT_LOCATION_PATH = '../data/ebay_laptops_and_notebooks_cleansed.csv'
 
 
 # ## Data Exploration
@@ -2267,7 +2267,7 @@ value_counts_with_proportion(dataframe=df, col='storage_type_clean')
 # - **Reduced cardinality**: Cardinality was reduced from 45 different unique values to 6.
 # - **Minor Categories**: The categories `other` (0.01) and `hdd_or_ssd` (0.01) are very small, suggesting that these cases are very uncommon in the dataset.
 
-# ## Saving the data
+# ## Exporting the data
 
 # In[ ]:
 
@@ -2283,13 +2283,20 @@ print(clean_columns)
 
 
 df_clean = df.select(clean_columns)
-df_clean.head(n=10)
+df_clean.columns = [col.replace('_clean', '') for col in df_clean.columns]
+df_clean.to_pandas().head(n=10)
 
-
-# Now, we'll export this dataset to a csv file, named `ebay_laptops_and_notebooks_cleaned.csv`.
 
 # In[ ]:
 
 
-df.select(clean_columns).write_csv(file=DATA_OUTPUT_LOCATION_PATH)
+df_clean.to_pandas().head(n=10)
+
+
+# Now, we'll export this dataset to a csv file, named `ebay_laptops_and_notebooks_cleansed.csv`.
+
+# In[ ]:
+
+
+df_clean.write_csv(file=DATA_OUTPUT_LOCATION_PATH)
 
