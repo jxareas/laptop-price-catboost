@@ -1,20 +1,35 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# # eBay Laptops & Notebooks - Data Cleansing
+# # eBay Laptops & Netbooks - Data Cleansing
 # 
-# The following dataset contains information about laptops and notebooks, by web scraping the popular e-commerce website
-# **eBay**.
+# This  dataset contains information about laptops and netbooks, obtained via web scraping the popular e-commerce website **eBay**. This type of web scraper is programmed to navigate through eBay's web pages, retrieve relevant information about laptops and netbooks listings, and compile this data into a dataset.
 # 
-# The dataset contains information about the laptop prices (possible variable of interest), brand, ratings, condition, as well as hardware information (processor, screen size, ram, etc).
+# The dataset may include details such as product titles, descriptions, prices, seller information, and other relevant attributes.
+# 
+# The goal of this project is to ensure the dataset is **cleaned**, **standardized**, and **ready for analysis**. This includes handling issues like: missing values, duplicates and inconsistent formatting.
+# 
+# By performing these steps, we aim to improve the accuracy and reliability of the dataset, which can then be used for further analysis, such as price trend analysis, brand distribution, and product feature comparison.
 # 
 # <div align="center">
 # <img src="../assets/logos/ebay.png" width="250"/>
 # </div>
 
+# ## Links & Information
+# 
+# **Original Dataset** - Kaggle: [Ebay Laptops & Netbooks Sales][Kaggle Dataset] by *Elvin Rustamov*
+# 
+# **Project Repository** - GitHub: [Laptop Price Prediction with CatBoost][Project Code]
+# 
+# **Data Cleansing Notebook** - Kaggle: [Laptop Data Cleansing][Kaggle Notebook]
+# 
+# [Kaggle Dataset]: https://www.kaggle.com/datasets/elvinrustam/ebay-laptops-and-netbooks-sales/data
+# [Project Code]: https://github.com/jxareas/laptop-price-catboost
+# [Kaggle Notebook]: https://www.kaggle.com/jxareas
+
 # ## Loading Libraries
 # 
-# We are using **Polars** for data cleansing. Polars is a **fast**, **parallel**, and **memory-efficient** DataFrame library written in *Rust*, designed for handling large datasets.
+# During the cleaning process, we'll make intensive use of the **Polars** open-source library. Polars is a **fast**, **parallel**, and **memory-efficient** DataFrame library written in *Rust*, designed for handling large datasets.
 # 
 # It provides intuitive API operations for data manipulation, such as filtering, grouping, joining, and transforming data, all in a very efficient manner. Unlike other popular libraries like Pandas, Polars is optimized for performance and can handle larger datasets with significantly faster execution times.
 # During the data cleaning process, we will leverage Polars to:
@@ -26,23 +41,22 @@
 # Polars supports both eager and lazy execution modes, making it flexible for a variety of use cases.
 # 
 # <div align="center">
-# <img src="../assets/logos/polars.png"/>
+# <img src="../assets/logos/polars.png" height="600" width="600"/>
 # </div>
 
 # In[ ]:
 
 
-# Importing libraries and setting constants
-
+# Libraries
 import re
 from typing import Optional, Tuple, Callable, Any
 
 import polars as pl
 from polars import LazyFrame
 
-# Data source location
-DATA_SOURCE_PATH = '../data/ebay_laptops_and_notebooks.csv'
-DATA_OUTPUT_LOCATION_PATH = '../data/ebay_laptops_and_notebooks_cleansed.csv'
+# Constants
+DATA_SOURCE_PATH = '../data/ebay_laptops_and_netbooks.csv'
+DATA_OUTPUT_LOCATION_PATH = '../data/ebay_laptops_and_netbooks_cleansed.csv'
 
 
 # ## Data Exploration
@@ -125,6 +139,19 @@ pl.DataFrame(data={
 # Renaming columns: replacing blank spaces for underscores and lowercasing columns
 df = df.rename({col: col.strip().lower().replace(' ', '_') for col in df.columns})
 print(df.columns)
+
+
+# ## Removing duplicates
+# 
+# Removing duplicates at the start of the data cleansing process ensures that the dataset reflects unique entries, avoiding skewed analyses or misleading insights. In the context of this web scraping dataset, duplicates most likely arise from multiple listings of the same laptop.
+# These redundancies can distort price trends, brand distribution, and other key analyses. By eliminating them early, we maintain data integrity and improve the accuracy of subsequent analysis steps.
+
+# In[ ]:
+
+
+print(f'Total rows before removing duplicates: {df.height}')
+df = df.unique()
+print(f'Total rows after removing duplicates {df.height}')
 
 
 # ## Utility Functions
@@ -219,8 +246,8 @@ value_counts_with_proportion(dataframe=df, col='brand')
 
 # Define a mapping to replace certain placeholder values with more meaningful labels.
 brand_replace_map = {
-    '?': 'unbranded',  # Replace '?' with 'unbranded' for unknown brands.
-    'does_not_apply': 'not_applicable',  # Replace 'does_not_apply' with 'not_applicable' to handle irrelevant data.
+    '?': 'unknown',  # Replace '?' with 'unknown' for unknown brands.
+    'does_not_apply': 'unknown',  # Replace 'does_not_apply' with 'unknown' to handle irrelevant data.
 }
 
 # Clean and normalize the brand names.
@@ -257,13 +284,13 @@ top_brands = (
     .group_by('brand_clean')
     .agg(pl.len().alias('count'))
     .sort('count', descending=True)
-    .head(5)
+    .head(10)
     .select('brand_clean')
     .to_series()
 )
 
 # Create a regex pattern to match brand names followed by an underscore (_).
-is_a_top_brand_string_pattern = "|".join(re.escape(color) for color in top_brands + '_')
+is_a_top_brand_string_pattern = "|".join(re.escape(brand_name) for brand_name in top_brands + '_')
 
 
 # Function to extract the actual brand from a string.
@@ -749,7 +776,7 @@ processor_replace_map = {
    'none': 'unknown',
    'no': 'unknown',
    '^?': 'unknown',
-   'does not apply': 'not_applicable'
+   'does not apply': 'unknown'
 }
 
 # Apply the replacement logic to the 'processor' column to clean and standardize the values.
@@ -1057,7 +1084,7 @@ def clean_colors(color: str, valid_colors_list: list[str] = None) -> str:
         >>> clean_colors('Pink', fetch_valid_colors_list())
         'pink'
         >>> clean_colors('Sky Blue')
-        'other'
+        'blue'
     """
     if valid_colors_list is None:
         valid_colors_list = fetch_valid_colors_list()
@@ -1492,7 +1519,7 @@ def map_gpu_type(gpu_str: str) -> str:
         'nvidia'
         >>> map_gpu_type("ARM Mali-G76")
         'mali'
-        >>> map_gpu_type("Unknown GPU")
+        >>> map_gpu_type("Elmo GPU")
         'other'
     """
     if gpu_str is None or gpu_str == "":

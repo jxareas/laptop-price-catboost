@@ -1,14 +1,30 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# # eBay Laptops & Notebooks - Modeling
+# # eBay Laptops & Netbooks - Modeling
+# 
+# In this project, we aim to build a predictive model for **estimating laptop prices** using a dataset which contains cleaned information from eBay's Laptops & Netbooks category, originally obtained via web scraping, which includes product attributes such as brand, specifications, and other listing details.
+# 
+# The model utilizes **CatBoost** (*Categorical Boosting*), a state-of-the-art gradient boosting library [developed by Yandex][Yandex CatBoost], renowned for its efficiency in handling categorical features and its strong performance in regression, classification & ranking.
+# 
+# <div align="center">
+# <img src="../assets/logos/catboost_logo.png" height="200" width="200"/>
+# </div>
+# 
+# [Yandex Catboost]: https://yandex.com/dev/catboost/
+
+# ## Links & Information
+# 
+# **Project Repository** - GitHub: [Laptop Price Prediction with CatBoost][Project Code]
+# 
+# [Project Code]: https://github.com/jxareas/laptop-price-catboost
 # 
 
 # ### Loading Libraries
 # 
 # 
 
-# In[ ]:
+# In[1]:
 
 
 # Importing libraries and setting constants
@@ -18,7 +34,7 @@ import polars as pl
 
 # Constants
 RANDOM_SEED = 287
-DATA_SOURCE_PATH = '../data/ebay_laptops_and_notebooks_cleansed.csv'
+DATA_SOURCE_PATH = '../data/ebay_laptops_and_netbooks_cleansed.csv'
 
 
 
@@ -26,7 +42,7 @@ DATA_SOURCE_PATH = '../data/ebay_laptops_and_notebooks_cleansed.csv'
 
 # ### Loading the dataset
 
-# In[ ]:
+# In[2]:
 
 
 df = pl.read_csv(DATA_SOURCE_PATH)
@@ -35,7 +51,7 @@ df.head(n=10).to_pandas()
 
 # ### Dropping duplicates
 
-# In[ ]:
+# In[3]:
 
 
 df = df.unique()
@@ -44,7 +60,7 @@ df.head(n=10).to_pandas()
 
 # ## Exploratory Data Analysis
 
-# In[ ]:
+# In[4]:
 
 
 # TODO : Exploratory Data Analysis
@@ -52,7 +68,7 @@ df.head(n=10).to_pandas()
 
 # ## Feature Engineering
 
-# In[ ]:
+# In[5]:
 
 
 # TODO : Feature Engineering
@@ -60,7 +76,7 @@ df.head(n=10).to_pandas()
 
 # ## Machine Learning
 
-# In[ ]:
+# In[6]:
 
 
 # TODO : Machine Learning
@@ -68,7 +84,7 @@ df.head(n=10).to_pandas()
 
 # ## Hyperparameter Tuning
 
-# In[ ]:
+# In[7]:
 
 
 # TODO : Hyperparameter Tuning
@@ -76,7 +92,7 @@ df.head(n=10).to_pandas()
 
 # ## Explainable AI - SHAP
 
-# In[ ]:
+# In[8]:
 
 
 # TODO: Explainable AI - SHAP

@@ -205,3 +205,7 @@ cython_debug/
 
 # CatBoost
 catboost_info
+
+# Local files
+/data/temp_dataset.csv
+/notebooks/temp_notebook.ipynb

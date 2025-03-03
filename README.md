@@ -3,7 +3,7 @@
 <div align="center">
   <a href="#">
    <!-- Replace this logo for a custom official logo -->
-    <img src="./assets/logos/catboost_logo.png" alt="Logo" width="300" height="300">
+    <img src="./assets/logos/catboost_logo.png" alt="Logo" width="150" height="150">
   </a>
 
 <h1 align = "center">
@@ -11,7 +11,7 @@
 </h1>
     <!-- Add/Remove categories depending on your project -->
   <p align="center">
-    A CatBoost Regressor for Laptop Price Prediction!
+    Leveraging CatBoost for Laptop Price Regression
     <br />
     <!-- IMPORTANT NOTE: If you want to append emojis you'll need to add the '-' sign before and after the header, as shown below:  -->
     <a href="#-requirements-">Requirements</a>
