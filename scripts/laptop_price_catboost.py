@@ -34,15 +34,19 @@
 # These libraries will work together to ensure a streamlined and efficient manner for building and optimizing the predictive model.
 # 
 
-# In[23]:
+# In[1]:
 
 
 # Importing libraries and setting constants
 
 # Libraries
 import polars as pl
-import seaborn.objects as sns
+import seaborn as sns
+import seaborn.objects as so
 from feature_engine.encoding import RareLabelEncoder
+from scipy import stats
+import numpy as np
+from sklearn.preprocessing import PowerTransformer
 from textblob import TextBlob
 from typing import Tuple
 
@@ -55,19 +59,37 @@ DATA_SOURCE_PATH = '../data/ebay_laptops_and_netbooks_cleansed.csv'
 
 # ### Loading the dataset
 
-# In[ ]:
+# In[2]:
 
 
 df = pl.read_csv(DATA_SOURCE_PATH)
-df.head(n=10)
+df.describe()
 
 
 # ## Exploratory Data Analysis
+# 
 
-# In[ ]:
+# In[3]:
 
 
 # TODO : Exploratory Data Analysis
+
+
+# In[4]:
+
+
+(
+    so.Plot(df, x='min_price')
+    .add(so.Bars(color='royalblue'), so.Hist('density'))
+    .add(so.Area(color='red', alpha=.15), so.KDE())
+    .label(title='Minimum Price KDE')
+)
+
+
+# In[5]:
+
+
+## TODO : More EDA - AutoEDA? (SweetViz, AutoViz, pandas-profiling) or manual? TBD
 
 
 # ## Feature Engineering
@@ -95,7 +117,7 @@ df.head(n=10)
 # [TextBlob]: https://github.com/sloria/TextBlob
 # [NLTK]: https://github.com/nltk/nltk
 
-# In[ ]:
+# In[6]:
 
 
 df.select(
@@ -105,99 +127,81 @@ df.select(
 ).head(n=10).to_pandas()
 
 
-# In[ ]:
+# In[7]:
 
 
 def get_sentiment_label_by_polarity(polarity: float, threshold: float = 0.1) -> str:
     """
-    Determines the sentiment label based on polarity.
-
-    This function assigns a sentiment label ('positive', 'negative', or 'neutral')
-    based on the polarity value and a given threshold.
+    Assigns a sentiment label based on polarity.
 
     Parameters:
     -----------
     polarity : float
-        The polarity score of the text, ranging from -1 (negative) to 1 (positive).
+        The polarity score (-1 to 1).
 
     threshold : float, optional, default=0.1
-        The threshold for determining sentiment labels. If the polarity is greater
-        than the threshold, the label will be 'positive'; if less than the negative
-        threshold, the label will be 'negative'; otherwise, the label will be 'neutral'.
+        The threshold for determining the label: 'positive', 'negative', or 'neutral'.
 
     Returns:
     --------
     str
-        A sentiment label ('positive', 'negative', or 'neutral') based on the polarity score.
+        A sentiment label ('positive', 'negative', or 'neutral').
     """
     if polarity > threshold:
         return "positive"
     elif polarity < -threshold:
         return "negative"
-    else:
-        return "neutral"
+    return "neutral"
 
 
 def get_sentiment_features(text: str, threshold: float = 0.1) -> Tuple[float, float, str]:
     """
-    Analyzes the sentiment of a given text using TextBlob.
-
-    This function calculates the polarity and subjectivity of the input text
-    and assigns a sentiment label using the `get_sentiment_label` function.
+    Analyzes sentiment of the given text using TextBlob.
 
     Parameters:
     -----------
     text : str
-        The input text (e.g., seller note) to analyze for sentiment.
+        The text to analyze (e.g., seller note).
 
     threshold : float, optional, default=0.1
-        The threshold for determining sentiment labels. If the polarity is greater
-        than the threshold, the label will be 'positive'; if less than the negative
-        threshold, the label will be 'negative'; otherwise, the label will be 'neutral'.
+        The threshold for determining sentiment labels.
 
     Returns:
     --------
     Tuple[float, float, str]
-        A tuple containing:
-        - polarity (float): The polarity score of the text, ranging from -1 (negative)
-          to 1 (positive).
-        - subjectivity (float): The subjectivity score of the text, ranging from 0 (objective)
-          to 1 (subjective).
-        - sentiment_label (str): A sentiment label ('positive', 'negative', or 'neutral')
-          based on the polarity score.
+        - polarity (float): The polarity score (-1 to 1).
+        - subjectivity (float): The subjectivity score (0 to 1).
+        - sentiment_label (str): 'positive', 'negative', or 'neutral'.
     """
     blob = TextBlob(text)
 
     polarity = blob.sentiment.polarity
     subjectivity = blob.sentiment.subjectivity
-
-    # Get the sentiment label based on polarity
     sentiment_label = get_sentiment_label_by_polarity(polarity, threshold)
 
     return polarity, subjectivity, sentiment_label
 
 
-# In[ ]:
+# In[8]:
 
 
 def get_polarity(text: str, threshold: float = 0.1) -> float:
     """
-    Extracts the polarity from the sentiment of the given text.
+    Extracts the polarity score from the sentiment of the given text.
 
     Parameters:
     -----------
     text : str
-        The input text to analyze for sentiment polarity.
+        The text to analyze for sentiment polarity.
 
     threshold : float, optional, default=0.1
-        The threshold for determining sentiment polarity. This value is passed
-        to the `get_sentiment_features` function, but is not used in this
-        function directly.
+        The threshold for determining sentiment polarity, passed to
+        the `get_sentiment_features` function.
 
     Returns:
     --------
     float
-        The polarity score of the text, ranging from -1 (negative) to 1 (positive).
+        The polarity score, ranging from -1 (negative) to 1 (positive).
     """
     polarity, _, _ = get_sentiment_features(text, threshold)
     return polarity
@@ -205,22 +209,21 @@ def get_polarity(text: str, threshold: float = 0.1) -> float:
 
 def get_subjectivity(text: str, threshold: float = 0.1) -> float:
     """
-    Extracts the subjectivity from the sentiment of the given text.
+    Extracts the subjectivity score from the sentiment of the given text.
 
     Parameters:
     -----------
     text : str
-        The input text to analyze for sentiment subjectivity.
+        The text to analyze for sentiment subjectivity.
 
     threshold : float, optional, default=0.1
-        The threshold for determining sentiment polarity. This value is passed
-        to the `get_sentiment_features` function, but is not used in this
-        function directly.
+        The threshold for determining sentiment polarity, passed to
+        the `get_sentiment_features` function.
 
     Returns:
     --------
     float
-        The subjectivity score of the text, ranging from 0 (objective) to 1 (subjective).
+        The subjectivity score, ranging from 0 (objective) to 1 (subjective).
     """
     _, subjectivity, _ = get_sentiment_features(text, threshold)
     return subjectivity
@@ -234,23 +237,22 @@ def get_sentiment_label(text: str, threshold: float = 0.1) -> str:
     Parameters:
     -----------
     text : str
-        The input text to analyze for sentiment and label.
+        The text to analyze for sentiment and label.
 
     threshold : float, optional, default=0.1
-        The threshold for determining sentiment polarity. This value is passed
-        to the `get_sentiment_features` function, but is not used in this
-        function directly.
+        The threshold for determining sentiment polarity, passed to
+        the `get_sentiment_features` function.
 
     Returns:
     --------
     str
-        The sentiment label of the text: 'positive', 'negative', or 'neutral'.
+        The sentiment label: 'positive', 'negative', or 'neutral'.
     """
     _, _, sentiment_label = get_sentiment_features(text, threshold)
     return sentiment_label
 
 
-# In[ ]:
+# In[9]:
 
 
 df = df.with_columns(
@@ -271,7 +273,7 @@ df = df.with_columns(
 
 # Visualizing the new features for the seller notes:
 
-# In[ ]:
+# In[10]:
 
 
 df.select(
@@ -286,31 +288,101 @@ df.select(
 
 # #### **Visualization** - Seller Note Polarity
 
-# In[ ]:
+# In[11]:
 
 
-## TODO : Add Seller Note Polarity Plots
+(
+    so.Plot(df, x='seller_note_polarity')
+    .add(so.Bars(color='skyblue', alpha=.8), so.Hist('density'))
+    .add(so.Area(color='red', alpha=.15), so.KDE())
+    .label(title='Seller Note Polarity KDE', x='Polarity', y='Density')
+)
+
+
+# In[12]:
+
+
+(
+    so.Plot(df, x='seller_note_polarity', color='seller_note_sentiment_label')
+    .add(so.Bars(alpha=.8), so.Hist('probability'))
+    .label(title='Seller Note Polarity by Sentiment', x='Polarity', y='Probability', color='Sentiment')
+)
 
 
 # #### **Visualization** - Seller Note Subjectivity
 
-# In[ ]:
+# In[13]:
 
 
-## TODO : Add Seller Note Subjectivity Plots
+(
+    so.Plot(df, x='seller_note_subjectivity')
+    .add(so.Bars(color='purple', alpha=.8), so.Hist('density'))
+    .add(so.Area(color='yellow', alpha=.3), so.KDE())
+    .label(title='Seller Note Subjectivity KDE', x='Subjectivity', y='Density')
+)
+
+
+# In[14]:
+
+
+(
+    so.Plot(df, x='seller_note_subjectivity', color='seller_note_sentiment_label')
+    .add(so.Bars(alpha=.8), so.Hist('probability'))
+    .label(title='Seller Note Subjectivity KDE', x='Subjectivity', y='Density')
+)
 
 
 # #### **Visualization** - Seller Note Sentiment
 
-# In[ ]:
+# In[15]:
 
 
-## TODO : Add Seller Note Sentiment Plots
+(
+    so.Plot(df, x='seller_note_sentiment_label', color='seller_note_sentiment_label')
+    .add(so.Bars(), so.Hist(), legend=False)
+    .label(title='Seller Notes by Sentiment', x='sentiment', y='count')
+)
+
+
+# In[16]:
+
+
+sns.catplot(data=df, x='seller_note_sentiment_label', kind='box', y='min_price', hue='seller_note_sentiment_label')
+
+(
+    so.Plot(df, x="min_price", color='seller_note_sentiment_label')
+    .facet("seller_note_sentiment_label")
+    .add(so.Area(), so.KDE())
+    .label(x='minimum price', y='probability density', color='sentiment')
+)
+
+
+# In[17]:
+
+
+(
+    so.Plot(df, x='seller_note_polarity', y='seller_note_subjectivity', color='seller_note_sentiment_label')
+    .add(so.Dots())
+    .limit(x=(-1, 1), y=(0, 1))
+    .label(title='Seller Note Polarity vs Subjectivity by Sentiment', x='Polarity', y='Subjectivity', color='sentiment')
+)
+
+
+# In[18]:
+
+
+(
+    so.Plot(df, x="seller_note_polarity", y='seller_note_subjectivity', color='seller_note_sentiment_label')
+    .facet("seller_note_sentiment_label", order=['negative', 'neutral', 'positive'])
+    .add(so.Dots())
+    .limit(x=(-1, 1))
+    .label(x='polarity', y='subjectivity', color='sentiment')
+)
 
 
 # #### Standardizing hard drive, RAM & SSD size to their size in gigabytes
 
-# In[ ]:
+# In[19]:
 
 
 df.select([
@@ -319,10 +391,21 @@ df.select([
 ])
 
 
-# In[ ]:
+# In[20]:
 
 
 def convert_to_gb(df_to_convert: pl.DataFrame, size_column: str, unit_column: str):
+    """
+    Convert size values to gigabytes based on the unit column.
+
+    Args:
+        df_to_convert (pl.DataFrame): DataFrame with size and unit columns.
+        size_column (str): Column containing size values.
+        unit_column (str): Column containing units (e.g., 'gigabytes', 'megabytes', 'terabytes').
+
+    Returns:
+        pl.DataFrame: DataFrame with a new column `<size_column>_in_gb` containing size in gigabytes.
+    """
     return df_to_convert.with_columns(
         pl.when(df_to_convert[unit_column] == "gigabytes").then(df_to_convert[size_column])
         .when(df_to_convert[unit_column] == "megabytes").then(df_to_convert[size_column] / 1024)
@@ -331,7 +414,7 @@ def convert_to_gb(df_to_convert: pl.DataFrame, size_column: str, unit_column: st
     )
 
 
-# In[ ]:
+# In[21]:
 
 
 size_columns = [col for col in df.columns if col.endswith('_size')]
@@ -341,27 +424,26 @@ for size_col in size_columns:
     df = convert_to_gb(df, size_col, unit_col)
 
 
-# In[ ]:
+# In[22]:
 
 
-print(f'Hard Drive Size - Non-null values: {df['hard_drive_size'].drop_nulls().len()}')
-print(f'RAM Size - Non-null values: {df['ram_size'].drop_nulls().len()}')
-print(f'SSD Size - Non-null values: {df['ssd_size'].drop_nulls().len()}')
-
-print(f'Hard Drive Size in Gigabytes - Non-null values: {df['hard_drive_size_in_gb'].drop_nulls().len()}')
-print(f'RAM Size in Gigabytes - Non-null values: {df['ram_size_in_gb'].drop_nulls().len()}')
-print(f'SSD Size in Gigabytes - Non-null values: {df['ssd_size_in_gb'].drop_nulls().len()}')
+for size in size_columns:
+    print(f'\nNon-null values for {size}: {df[size].drop_nulls().len()}')
+    size_in_gb = f'{size}_in_gb'
+    print(f'Non-null values for {size_in_gb}: {df[size_in_gb].drop_nulls().len()}')
 
 
 # ### Feature Selection
 
-# In[ ]:
+# In[23]:
 
 
 # The target variable : the minimum pricer required to purchase the item (laptop/netbook)
 target_var = 'min_price'
-# A polars expression for feature selection -> selecting every column except for the target variable & currency (currency cardinality is one)
-feature_selection_expr = pl.all().exclude(target_var, 'currency', 'seller_note')
+# A polars expression for feature selection
+feature_selection_expr = pl.all().exclude(target_var, 'currency', 'condition_description', 'seller_note',
+                                          'seller_note_sentiment_label', 'hard_drive_size', 'hard_drive_size_unit',
+                                          'ram_size', 'ram_size_unit', 'ssd_size', 'ssd_size_unit')
 
 # Dataframe holding all feature variables
 df_features = df.select(
@@ -373,13 +455,15 @@ series_target = df[target_var]
 
 # ### Categorical Features
 
-# In[ ]:
+# In[24]:
 
 
 feature_names = df_features.columns
 cat_feature_names = df_features.select(
     pl.col(pl.String),
 ).columns
+
+print(f'{feature_names=}')
 
 
 # ### Encoding rare labels
@@ -391,12 +475,13 @@ cat_feature_names = df_features.select(
 # This reduces noise, prevents overfitting, and enhances model interpretability without significantly losing information.
 # 
 # <div align="center">
-# <img src="../assets/logos/feature_engine.png" height="125" width="125"/>
+# <img src="../assets/logos/feature_engine.png" height="150" width="150"/>
+# <img src="../assets/images/rare_label_encoding.png" height="300" width="500"/>
 # </div>
 # 
 # [Feature-Engine]: https://github.com/feature-engine/feature_engine
 
-# In[ ]:
+# In[25]:
 
 
 # Sets the minimum count for a category to be kept separately, categories with fewer than 20 occurrences will be grouped.
@@ -414,7 +499,7 @@ for col in cat_feature_names:
 
 # ## Machine Learning
 
-# In[ ]:
+# In[26]:
 
 
 # TODO : Machine Learning
@@ -444,7 +529,7 @@ for col in cat_feature_names:
 
 # ## Hyperparameter Tuning
 
-# In[ ]:
+# In[27]:
 
 
 # TODO : Hyperparameter Tuning
@@ -452,7 +537,7 @@ for col in cat_feature_names:
 
 # ## Explainable AI - SHAP
 
-# In[ ]:
+# In[28]:
 
 
 # TODO: Explainable AI - SHAP
