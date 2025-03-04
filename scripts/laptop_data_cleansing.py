@@ -27,7 +27,7 @@
 # [Project Code]: https://github.com/jxareas/laptop-price-catboost
 # [Kaggle Notebook]: https://www.kaggle.com/jxareas
 
-# ## Loading Libraries
+# ## Importing Libraries
 # 
 # During the cleaning process, we'll make intensive use of the **Polars** open-source library. Polars is a **fast**, **parallel**, and **memory-efficient** DataFrame library written in *Rust*, designed for handling large datasets.
 # 
