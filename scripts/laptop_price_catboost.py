@@ -34,7 +34,7 @@
 # These libraries will work together to ensure a streamlined and efficient manner for building and optimizing the predictive model.
 # 
 
-# In[ ]:
+# In[1]:
 
 
 # Importing libraries and setting constants
@@ -66,7 +66,7 @@ DATA_SOURCE_PATH = '../data/ebay_laptops_and_netbooks_cleansed.csv'  # Path wher
 
 # ### Loading the dataset
 
-# In[ ]:
+# In[2]:
 
 
 df = pl.read_csv(DATA_SOURCE_PATH)
@@ -76,13 +76,13 @@ df.describe()
 # ## Exploratory Data Analysis
 # 
 
-# In[ ]:
+# In[3]:
 
 
 # TODO : Exploratory Data Analysis
 
 
-# In[ ]:
+# In[4]:
 
 
 (
@@ -93,7 +93,7 @@ df.describe()
 )
 
 
-# In[ ]:
+# In[5]:
 
 
 ## TODO : More EDA - AutoEDA? (SweetViz, AutoViz, pandas-profiling) or manual? TBD
@@ -124,7 +124,7 @@ df.describe()
 # [TextBlob]: https://github.com/sloria/TextBlob
 # [NLTK]: https://github.com/nltk/nltk
 
-# In[ ]:
+# In[6]:
 
 
 df.select(
@@ -134,7 +134,7 @@ df.select(
 ).head(n=10).to_pandas()
 
 
-# In[ ]:
+# In[7]:
 
 
 def get_sentiment_label_by_polarity(polarity: float, threshold: float = 0.1) -> str:
@@ -189,7 +189,7 @@ def get_sentiment_features(text: str, threshold: float = 0.1) -> Tuple[float, fl
     return polarity, subjectivity, sentiment_label
 
 
-# In[ ]:
+# In[8]:
 
 
 def get_polarity(text: str, threshold: float = 0.1) -> float:
@@ -259,7 +259,7 @@ def get_sentiment_label(text: str, threshold: float = 0.1) -> str:
     return sentiment_label
 
 
-# In[ ]:
+# In[9]:
 
 
 df = df.with_columns(
@@ -280,7 +280,7 @@ df = df.with_columns(
 
 # Visualizing the new features for the seller notes:
 
-# In[ ]:
+# In[10]:
 
 
 df.select(
@@ -295,7 +295,7 @@ df.select(
 
 # #### **Visualization** - Seller Note Polarity
 
-# In[ ]:
+# In[11]:
 
 
 (
@@ -306,7 +306,7 @@ df.select(
 )
 
 
-# In[ ]:
+# In[12]:
 
 
 (
@@ -318,7 +318,7 @@ df.select(
 
 # #### **Visualization** - Seller Note Subjectivity
 
-# In[ ]:
+# In[13]:
 
 
 (
@@ -329,7 +329,7 @@ df.select(
 )
 
 
-# In[ ]:
+# In[14]:
 
 
 (
@@ -341,7 +341,7 @@ df.select(
 
 # #### **Visualization** - Seller Note Sentiment
 
-# In[ ]:
+# In[15]:
 
 
 (
@@ -351,7 +351,7 @@ df.select(
 )
 
 
-# In[ ]:
+# In[16]:
 
 
 sns.catplot(data=df, x='seller_note_sentiment_label', kind='box', y='min_price', hue='seller_note_sentiment_label')
@@ -364,7 +364,7 @@ sns.catplot(data=df, x='seller_note_sentiment_label', kind='box', y='min_price',
 )
 
 
-# In[ ]:
+# In[17]:
 
 
 (
@@ -375,7 +375,7 @@ sns.catplot(data=df, x='seller_note_sentiment_label', kind='box', y='min_price',
 )
 
 
-# In[ ]:
+# In[18]:
 
 
 (
@@ -389,7 +389,7 @@ sns.catplot(data=df, x='seller_note_sentiment_label', kind='box', y='min_price',
 
 # #### Standardizing hard drive, RAM & SSD size to their size in gigabytes
 
-# In[ ]:
+# In[19]:
 
 
 df.select([
@@ -398,7 +398,7 @@ df.select([
 ])
 
 
-# In[ ]:
+# In[20]:
 
 
 def convert_to_gb(df_to_convert: pl.DataFrame, size_column: str, unit_column: str):
@@ -421,7 +421,7 @@ def convert_to_gb(df_to_convert: pl.DataFrame, size_column: str, unit_column: st
     )
 
 
-# In[ ]:
+# In[21]:
 
 
 size_columns = [col for col in df.columns if col.endswith('_size')]
@@ -431,7 +431,7 @@ for size_col in size_columns:
     df = convert_to_gb(df, size_col, unit_col)
 
 
-# In[ ]:
+# In[22]:
 
 
 for size in size_columns:
@@ -442,15 +442,14 @@ for size in size_columns:
 
 # ### Feature Selection
 
-# In[ ]:
+# In[23]:
 
 
 # The target variable : the minimum pricer required to purchase the item (laptop/netbook)
 target_var = 'min_price'
 # A polars expression for feature selection
 feature_selection_expr = pl.all().exclude(target_var, 'currency', 'condition_description', 'seller_note',
-                                          'seller_note_polarity' 'hard_drive_size', 'hard_drive_size_unit',
-                                          'ram_size', 'ram_size_unit', 'ssd_size', 'ssd_size_unit')
+                                          'hard_drive_size', 'ram_size', 'ssd_size', )
 
 # Dataframe holding all feature variables
 df_features = df.select(
@@ -462,7 +461,7 @@ series_target = df[target_var]
 
 # ### Categorical Features
 
-# In[ ]:
+# In[24]:
 
 
 feature_names = df_features.columns
@@ -489,7 +488,7 @@ print(f'Categorical Features: \n{cat_feature_names}')
 # 
 # [Feature-Engine]: https://github.com/feature-engine/feature_engine
 
-# In[ ]:
+# In[25]:
 
 
 # Sets the minimum count for a category to be kept separately, categories with fewer than 20 occurrences will be grouped.
@@ -507,7 +506,7 @@ for col in cat_feature_names:
 
 # ## Machine Learning
 
-# In[ ]:
+# In[26]:
 
 
 # TODO : Machine Learning
@@ -519,7 +518,7 @@ for col in cat_feature_names:
 # <img src="../assets/images/train_test_validation_split.png" height="326" width="500"/>
 # </div>
 
-# In[ ]:
+# In[27]:
 
 
 stratify_col = 'brand'
@@ -528,19 +527,19 @@ df_train, df_val_and_test, series_train, series_val_and_test = train_test_split(
     df_features,
     series_target,
     stratify=df_features[stratify_col],
-    test_size=.3,
+    train_size=.6,
     random_state=RANDOM_SEED,
 )
 
 df_val, df_test, series_val, series_test = train_test_split(
     df_val_and_test,
     series_val_and_test,
-    test_size=.5,
+    train_size=.5,
     stratify=df_val_and_test[stratify_col],
     random_state=RANDOM_SEED, )
 
 
-# In[ ]:
+# In[28]:
 
 
 X_train = df_train.to_numpy()
@@ -567,21 +566,21 @@ y_test = series_test.to_numpy()
 # <a href="https://www.researchgate.net/figure/The-flow-diagram-of-the-CatBoost-model_fig3_370695897"><i>The flow diagram of the CatBoost model</i></a>
 # </div>
 
-# In[ ]:
+# In[29]:
 
 
 train_pool = cb.Pool(data=X_train, label=y_train, cat_features=cat_feature_names, feature_names=feature_names)
 val_pool = cb.Pool(data=X_val, label=y_val, cat_features=cat_feature_names, feature_names=feature_names)
 
 
-# In[ ]:
+# In[30]:
 
 
 catboost = cb.CatBoostRegressor(loss_function='RMSE')
 catboost.fit(X=train_pool, eval_set=val_pool, logging_level='Silent')
 
 
-# In[ ]:
+# In[40]:
 
 
 catboost_feature_importance = pl.DataFrame({
@@ -590,14 +589,21 @@ catboost_feature_importance = pl.DataFrame({
 }).sort(by='importance', descending=True)
 
 (
-    so.Plot(catboost_feature_importance, x='importance', y='feature')
-    .add(so.Bar(), color='feature')
-    .label(title='CatBoost Feature Importance')
-    .theme(style.library['fast'])
+    so.Plot(catboost_feature_importance, x='importance', y='feature', color='importance')
+    .add(
+        so.Bar(edgewidth=10, width=0.85)
+    ).label(
+        title='CatBoost Feature Importance', x='Importance', y='Feature', color='Importance'
+    ).scale(
+        color=so.Continuous('flare').tick(every=1),
+    )
+    .theme(
+        style.library['fast']
+    ).layout(size=(8, 7))
 )
 
 
-# In[ ]:
+# In[32]:
 
 
 # Make predictions using the trained model on both the training and validation data
@@ -623,13 +629,13 @@ print(f"MAE score for train {round(mae_train)} USD & for validation {round(mae_v
 # <img src="../assets/logos/optuna.png" height="375" width="375"/>
 # </div>
 
-# In[ ]:
+# In[33]:
 
 
 # TODO : Hyperparameter Tuning
 
 
-# In[ ]:
+# In[34]:
 
 
 def objective(trial):
@@ -654,7 +660,7 @@ def objective(trial):
     return trial_rmse
 
 
-# In[ ]:
+# In[35]:
 
 
 tpe_sampler = optuna.samplers.TPESampler(seed=RANDOM_SEED)
@@ -664,7 +670,7 @@ study = optuna.create_study(study_name='catboost-hyperopt', direction='minimize'
 study.optimize(objective, n_trials=50, n_jobs=N_CORES)
 
 
-# In[ ]:
+# In[36]:
 
 
 print(f'Best Trial: #{study.best_trial.number}')
@@ -672,13 +678,13 @@ print(f'Best Trial Value: {study.best_trial.value}')
 print(f'Best Trial Params: {study.best_trial.params}')
 
 
-# In[ ]:
+# In[37]:
 
 
 vis.plot_param_importances(study)
 
 
-# In[ ]:
+# In[38]:
 
 
 fig = vis.plot_parallel_coordinate(study)
@@ -709,7 +715,7 @@ fig
 # <img src="../assets/logos/shap.png" height="375" width="375"/>
 # </div>
 
-# In[ ]:
+# In[39]:
 
 
 # Run SHAP
