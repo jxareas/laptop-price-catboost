@@ -11,7 +11,7 @@
 # <img src="../assets/logos/catboost_logo.png" height="225" width="225"/>
 # </div>
 # 
-# [Yandex Catboost]: https://yandex.com/dev/catboost/
+# [Yandex CatBoost]: https://yandex.com/dev/catboost/
 
 # ## Links & Information
 # 
@@ -34,7 +34,7 @@
 # These libraries will work together to ensure a streamlined and efficient manner for building and optimizing the predictive model.
 # 
 
-# In[1]:
+# In[ ]:
 
 
 # Importing libraries and setting constants
@@ -43,23 +43,30 @@
 import polars as pl
 import seaborn as sns
 import seaborn.objects as so
+import plotly
+import catboost as cb
+import shap
+import optuna
+import optuna.visualization as vis
+import matplotlib.style as style
 from feature_engine.encoding import RareLabelEncoder
-from scipy import stats
-import numpy as np
-from sklearn.preprocessing import PowerTransformer
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import r2_score, root_mean_squared_error, mean_absolute_error
 from textblob import TextBlob
+import os
 from typing import Tuple
 
 # Constants
-RANDOM_SEED = 287
-DATA_SOURCE_PATH = '../data/ebay_laptops_and_netbooks_cleansed.csv'
+RANDOM_SEED = 287  # Random Seed for reproducibility
+N_CORES = os.cpu_count() / 2  # Half the cores
+DATA_SOURCE_PATH = '../data/ebay_laptops_and_netbooks_cleansed.csv'  # Path where the data is stored
 
 
 # ## Data Preparation
 
 # ### Loading the dataset
 
-# In[2]:
+# In[ ]:
 
 
 df = pl.read_csv(DATA_SOURCE_PATH)
@@ -69,13 +76,13 @@ df.describe()
 # ## Exploratory Data Analysis
 # 
 
-# In[3]:
+# In[ ]:
 
 
 # TODO : Exploratory Data Analysis
 
 
-# In[4]:
+# In[ ]:
 
 
 (
@@ -86,7 +93,7 @@ df.describe()
 )
 
 
-# In[5]:
+# In[ ]:
 
 
 ## TODO : More EDA - AutoEDA? (SweetViz, AutoViz, pandas-profiling) or manual? TBD
@@ -117,7 +124,7 @@ df.describe()
 # [TextBlob]: https://github.com/sloria/TextBlob
 # [NLTK]: https://github.com/nltk/nltk
 
-# In[6]:
+# In[ ]:
 
 
 df.select(
@@ -127,7 +134,7 @@ df.select(
 ).head(n=10).to_pandas()
 
 
-# In[7]:
+# In[ ]:
 
 
 def get_sentiment_label_by_polarity(polarity: float, threshold: float = 0.1) -> str:
@@ -182,7 +189,7 @@ def get_sentiment_features(text: str, threshold: float = 0.1) -> Tuple[float, fl
     return polarity, subjectivity, sentiment_label
 
 
-# In[8]:
+# In[ ]:
 
 
 def get_polarity(text: str, threshold: float = 0.1) -> float:
@@ -252,7 +259,7 @@ def get_sentiment_label(text: str, threshold: float = 0.1) -> str:
     return sentiment_label
 
 
-# In[9]:
+# In[ ]:
 
 
 df = df.with_columns(
@@ -273,7 +280,7 @@ df = df.with_columns(
 
 # Visualizing the new features for the seller notes:
 
-# In[10]:
+# In[ ]:
 
 
 df.select(
@@ -288,7 +295,7 @@ df.select(
 
 # #### **Visualization** - Seller Note Polarity
 
-# In[11]:
+# In[ ]:
 
 
 (
@@ -299,7 +306,7 @@ df.select(
 )
 
 
-# In[12]:
+# In[ ]:
 
 
 (
@@ -311,7 +318,7 @@ df.select(
 
 # #### **Visualization** - Seller Note Subjectivity
 
-# In[13]:
+# In[ ]:
 
 
 (
@@ -322,7 +329,7 @@ df.select(
 )
 
 
-# In[14]:
+# In[ ]:
 
 
 (
@@ -334,7 +341,7 @@ df.select(
 
 # #### **Visualization** - Seller Note Sentiment
 
-# In[15]:
+# In[ ]:
 
 
 (
@@ -344,7 +351,7 @@ df.select(
 )
 
 
-# In[16]:
+# In[ ]:
 
 
 sns.catplot(data=df, x='seller_note_sentiment_label', kind='box', y='min_price', hue='seller_note_sentiment_label')
@@ -357,7 +364,7 @@ sns.catplot(data=df, x='seller_note_sentiment_label', kind='box', y='min_price',
 )
 
 
-# In[17]:
+# In[ ]:
 
 
 (
@@ -368,7 +375,7 @@ sns.catplot(data=df, x='seller_note_sentiment_label', kind='box', y='min_price',
 )
 
 
-# In[18]:
+# In[ ]:
 
 
 (
@@ -382,7 +389,7 @@ sns.catplot(data=df, x='seller_note_sentiment_label', kind='box', y='min_price',
 
 # #### Standardizing hard drive, RAM & SSD size to their size in gigabytes
 
-# In[19]:
+# In[ ]:
 
 
 df.select([
@@ -391,7 +398,7 @@ df.select([
 ])
 
 
-# In[20]:
+# In[ ]:
 
 
 def convert_to_gb(df_to_convert: pl.DataFrame, size_column: str, unit_column: str):
@@ -414,7 +421,7 @@ def convert_to_gb(df_to_convert: pl.DataFrame, size_column: str, unit_column: st
     )
 
 
-# In[21]:
+# In[ ]:
 
 
 size_columns = [col for col in df.columns if col.endswith('_size')]
@@ -424,25 +431,25 @@ for size_col in size_columns:
     df = convert_to_gb(df, size_col, unit_col)
 
 
-# In[22]:
+# In[ ]:
 
 
 for size in size_columns:
-    print(f'\nNon-null values for {size}: {df[size].drop_nulls().len()}')
+    print(f'Non-null values for {size}: {df[size].drop_nulls().len()}')
     size_in_gb = f'{size}_in_gb'
-    print(f'Non-null values for {size_in_gb}: {df[size_in_gb].drop_nulls().len()}')
+    print(f'Non-null values for {size_in_gb}: {df[size_in_gb].drop_nulls().len()}\n')
 
 
 # ### Feature Selection
 
-# In[23]:
+# In[ ]:
 
 
 # The target variable : the minimum pricer required to purchase the item (laptop/netbook)
 target_var = 'min_price'
 # A polars expression for feature selection
 feature_selection_expr = pl.all().exclude(target_var, 'currency', 'condition_description', 'seller_note',
-                                          'seller_note_sentiment_label', 'hard_drive_size', 'hard_drive_size_unit',
+                                          'seller_note_polarity' 'hard_drive_size', 'hard_drive_size_unit',
                                           'ram_size', 'ram_size_unit', 'ssd_size', 'ssd_size_unit')
 
 # Dataframe holding all feature variables
@@ -455,7 +462,7 @@ series_target = df[target_var]
 
 # ### Categorical Features
 
-# In[24]:
+# In[ ]:
 
 
 feature_names = df_features.columns
@@ -463,7 +470,8 @@ cat_feature_names = df_features.select(
     pl.col(pl.String),
 ).columns
 
-print(f'{feature_names=}')
+print(f'All Features: \n{feature_names}')
+print(f'Categorical Features: \n{cat_feature_names}')
 
 
 # ### Encoding rare labels
@@ -481,7 +489,7 @@ print(f'{feature_names=}')
 # 
 # [Feature-Engine]: https://github.com/feature-engine/feature_engine
 
-# In[25]:
+# In[ ]:
 
 
 # Sets the minimum count for a category to be kept separately, categories with fewer than 20 occurrences will be grouped.
@@ -499,7 +507,7 @@ for col in cat_feature_names:
 
 # ## Machine Learning
 
-# In[26]:
+# In[ ]:
 
 
 # TODO : Machine Learning
@@ -510,6 +518,38 @@ for col in cat_feature_names:
 # <div align="center">
 # <img src="../assets/images/train_test_validation_split.png" height="326" width="500"/>
 # </div>
+
+# In[ ]:
+
+
+stratify_col = 'brand'
+
+df_train, df_val_and_test, series_train, series_val_and_test = train_test_split(
+    df_features,
+    series_target,
+    stratify=df_features[stratify_col],
+    test_size=.3,
+    random_state=RANDOM_SEED,
+)
+
+df_val, df_test, series_val, series_test = train_test_split(
+    df_val_and_test,
+    series_val_and_test,
+    test_size=.5,
+    stratify=df_val_and_test[stratify_col],
+    random_state=RANDOM_SEED, )
+
+
+# In[ ]:
+
+
+X_train = df_train.to_numpy()
+y_train = series_train.to_numpy()
+X_val = df_val.to_numpy()
+y_val = series_val.to_numpy()
+X_test = df_test.to_numpy()
+y_test = series_test.to_numpy()
+
 
 # ### Categorical Boosting
 # 
@@ -527,18 +567,156 @@ for col in cat_feature_names:
 # <a href="https://www.researchgate.net/figure/The-flow-diagram-of-the-CatBoost-model_fig3_370695897"><i>The flow diagram of the CatBoost model</i></a>
 # </div>
 
-# ## Hyperparameter Tuning
+# In[ ]:
 
-# In[27]:
+
+train_pool = cb.Pool(data=X_train, label=y_train, cat_features=cat_feature_names, feature_names=feature_names)
+val_pool = cb.Pool(data=X_val, label=y_val, cat_features=cat_feature_names, feature_names=feature_names)
+
+
+# In[ ]:
+
+
+catboost = cb.CatBoostRegressor(loss_function='RMSE')
+catboost.fit(X=train_pool, eval_set=val_pool, logging_level='Silent')
+
+
+# In[ ]:
+
+
+catboost_feature_importance = pl.DataFrame({
+    'feature': catboost.feature_names_,
+    'importance': catboost.feature_importances_,
+}).sort(by='importance', descending=True)
+
+(
+    so.Plot(catboost_feature_importance, x='importance', y='feature')
+    .add(so.Bar(), color='feature')
+    .label(title='CatBoost Feature Importance')
+    .theme(style.library['fast'])
+)
+
+
+# In[ ]:
+
+
+# Make predictions using the trained model on both the training and validation data
+y_train_pred = catboost.predict(train_pool)
+y_val_pred = catboost.predict(val_pool)
+
+# Calculate the Root Mean Squared Error (RMSE) scores for training and validation data
+rmse_train = root_mean_squared_error(series_train, y_train_pred)
+rmse_val = root_mean_squared_error(series_val, y_val_pred)
+
+# Calculate the Mean Absolute Error (MAE) scores for training and validation data
+mae_train = mean_absolute_error(series_train, y_train_pred)
+mae_val = mean_absolute_error(series_val, y_val_pred)
+
+# Print the rounded RMSE scores
+print(f"RMSE score for train {round(rmse_train)} USD & for validation {round(rmse_val)} USD")
+print(f"MAE score for train {round(mae_train)} USD & for validation {round(mae_val)} USD")
+
+
+# ## Hyperparameter Tuning
+# 
+# <div align="center">
+# <img src="../assets/logos/optuna.png" height="375" width="375"/>
+# </div>
+
+# In[ ]:
 
 
 # TODO : Hyperparameter Tuning
 
 
+# In[ ]:
+
+
+def objective(trial):
+    # Define hyperparameter search space for optimization
+    params = {
+        'iterations': trial.suggest_int('iterations', 400, 500),  # Number of iterations
+        'depth': trial.suggest_int('depth', 4, 6),  # Max depth of trees
+        'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.1, log=True),  # Learning rate
+        'loss_function': 'RMSE',  # Loss function to optimize
+        'verbose': 0,  # Set verbosity level to 0
+        'early_stopping_rounds': trial.suggest_int('early_stopping_rounds', 20, 100),  # Early stopping
+    }
+
+    # Train CatBoostRegressor with suggested parameters
+    model = cb.CatBoostRegressor(**params, thread_count=N_CORES)
+    model.fit(train_pool, eval_set=val_pool)
+
+    # Make predictions and calculate RMSE on the validation set
+    pred = model.predict(val_pool)
+    trial_rmse = root_mean_squared_error(series_val, pred)
+
+    return trial_rmse
+
+
+# In[ ]:
+
+
+tpe_sampler = optuna.samplers.TPESampler(seed=RANDOM_SEED)
+hyperband_pruner = optuna.pruners.HyperbandPruner()
+
+study = optuna.create_study(study_name='catboost-hyperopt', direction='minimize')
+study.optimize(objective, n_trials=50, n_jobs=N_CORES)
+
+
+# In[ ]:
+
+
+print(f'Best Trial: #{study.best_trial.number}')
+print(f'Best Trial Value: {study.best_trial.value}')
+print(f'Best Trial Params: {study.best_trial.params}')
+
+
+# In[ ]:
+
+
+vis.plot_param_importances(study)
+
+
+# In[ ]:
+
+
+fig = vis.plot_parallel_coordinate(study)
+fig.update_layout(
+    title="Hyperparameter Tuning for CatBoost - Parallel Coordinate Plot",
+    title_font=dict(family="Arial", size=18, color="black", weight="bold"),  # Bold title
+    title_x=0.5,
+    font=dict(family="Arial", size=14, color="black")
+)
+
+# Access the traces to modify the line colorscale
+fig.data[0].line.colorscale = plotly.colors.sequential.Reds
+fig
+
+
 # ## Explainable AI - SHAP
 
-# In[28]:
+# ### Understanding Model Decisions
+
+# - **SHAP (SHapley Additive exPlanations)** is a method used to explain machine learning models by showing how much each input factor (feature) contributes to a prediction.
+# - It helps us see which features are **driving the model’s decisions**—whether they increase or decrease the predicted outcome.
+# - The **summary plot** provides a visual representation of feature importance, showing:
+#   - Which features **have the most impact** overall.
+#   - Whether a feature **positively or negatively influences** predictions.
+#   - How the values of these features interact with the model.
+# 
+# <div align="center">
+# <img src="../assets/logos/shap.png" height="375" width="375"/>
+# </div>
+
+# In[ ]:
 
 
-# TODO: Explainable AI - SHAP
+# Run SHAP
+shap.initjs()
+tree_explainer = shap.TreeExplainer(catboost)
+shap_values = tree_explainer.shap_values(X_val)
+
+# Pass feature names manually
+shap.summary_plot(shap_values, X_val, feature_names=feature_names)
 
