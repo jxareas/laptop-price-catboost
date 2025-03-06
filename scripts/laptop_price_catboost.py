@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# # eBay Laptops & Netbooks - Modeling
+# # eBay Laptops & Netbooks - Modeling Price Prediction
 # 
 # In this project, we aim to build a predictive model for **estimating laptop prices** using a dataset which contains cleaned information from eBay's Laptops & Netbooks category, originally obtained via web scraping, which includes product attributes such as brand, specifications, and other listing details.
 # 
@@ -20,7 +20,7 @@
 # [Project Code]: https://github.com/jxareas/laptop-price-catboost
 # 
 
-# ### Importing Libraries
+# ## Importing Libraries
 # 
 # In this project, we will leverage several powerful libraries for efficient data manipulation, feature engineering, modeling, and hyperparameter tuning.
 # 
@@ -31,12 +31,12 @@
 # - **Optuna**: Utilized for **hyperparameter tuning**, automating the process of finding the best model parameters to improve performance.
 # - **SHAP**: Empowering **Explainable AI** via *model interpretability*, providing insights into how each feature influences the model's predictions, helping to explain the decisions made by the model.
 # - **Seaborn**: Used for **data visualization** & *Exploratory Data Analysis*. We will specifically leverage the `seaborn.objects` API, a more declarative and flexible approach to plotting, based on the *Grammar of Graphics*.
-# - **TextBlob**: A simple yet powerful library for **natural language processing (NLP)**, used here to analyze sentiment
+# - **TextBlob**: A simple yet powerful library for **natural language processing (NLP)**, used here to analyze sentiments from some String variables.
 # 
-# These libraries will work together to ensure a streamlined and efficient manner for building and optimizing the predictive model.
+# These libraries will work together to ensure a streamlined and efficient manner for building and optimizing our predictive modeling.
 # 
 
-# In[371]:
+# In[63]:
 
 
 # Importing libraries and setting constants
@@ -61,32 +61,33 @@ from sklearn.model_selection import train_test_split
 from textblob import TextBlob
 
 # Constants
-RANDOM_SEED = 287  # Random Seed for reproducibility
-N_CORES = os.cpu_count() / 2  # Half the cores
-DATA_SOURCE_PATH = '../data/ebay_laptops_and_netbooks_cleansed.csv'  # Path where the data is stored
+RANDOM_SEED = 287  # Random seed for reproducibility
+N_CORES_HALF = os.cpu_count() / 2  # Half the number of cores available
+DATA_SOURCE_PATH = '../data/ebay_laptops_and_netbooks_cleansed.csv'  # Path wherein the data is located
 
 
-# ## Data Preparation
+# ## Data Loading
 
-# ### Loading the dataset
+# We import the data set from the `DATA_SOURCE_PATH` location and check the first 5 rows.
 
-# In[372]:
+# In[64]:
 
 
 df = pl.read_csv(DATA_SOURCE_PATH)
-df.describe()
+df.head(n=5)
 
 
-# As the data is already cleansed, there is no need for further preparation.
+# As the data is already cleansed, there is little need for further operations. However, one might want to examine the dataset, visualize patterns in th e data and maybe create new features from existing variables, which we'll do in sections: **Exploratory Data Analysis** & **Feature Engineering**.
 # 
-# For further details on how the data cleansing process was carried out, feel free to check the *Data Cleansing Notebook* in either [GitHub][CLEANSING_NOTEBOOK_GITHUB_URL] & [Kaggle][CLEANSING_NOTEBOOK_KAGGLE_URL]
+# For further details on how the data cleansing process was carried out, feel free to check the *Data Cleansing Notebook* in either [GitHub][CLEANSING_NOTEBOOK_GITHUB_URL] or [Kaggle][CLEANSING_NOTEBOOK_KAGGLE_URL].
+# 
 # 
 # [CLEANSING_NOTEBOOK_GITHUB_URL]: https://github.com/jxareas/laptop-price-catboost/blob/master/notebooks/laptop_data_cleansing.ipynb
 # [CLEANSING_NOTEBOOK_KAGGLE_URL]: .
 
-# ## Exploratory Data Analysis
+# ## Exploratory Data Analysis - EDA
 # 
-# Exploratory Data Analysis (**EDA**) is the process of **examining, summarizing, and visualizing a dataset** to uncover patterns, detect anomalies, and gain insights before applying statistical analysis. The goal of EDA is to **understand the structure and distribution of the data**, ensuring that it is clean, relevant, and well-prepared for modeling.
+# Exploratory Data Analysis (**EDA**) is the process of **examining, summarizing, and visualizing a dataset** to uncover patterns, detect anomalies, and gain insights before applying statistical analysis methods. The goal of EDA is to **understand the structure and distribution of the data**, ensuring that it is clean, relevant, and well-prepared for modeling.
 # 
 # ### Why is EDA important?
 # Before training a predictive model, it’s crucial to analyze the dataset to:
@@ -96,43 +97,75 @@ df.describe()
 # 
 # 
 
+# ### Exploring the Data Set
+
+# #### Summary Statistics
+# 
+# Before anything else, we check some of the summary statistics for each variable, that is, their count, average, standard deviation, etc.
+
+# In[65]:
+
+
+df.describe()
+
+
+# #### Null Count
+# 
+# We also take a look at the null count for each column, which --as evidenced below-- varies heavily, from the target variable `min_price` having no nulls whatsoever, to the `rating` columns having an extremely high percentage (95%!) of null values.
+
+# In[66]:
+
+
+df.null_count().unpivot(
+    variable_name='variable',
+    value_name='null_count'
+).with_columns(
+    (pl.col('null_count') / df.height).round(2).alias('proportion')
+).sort(
+    by='null_count',
+    descending=True,
+)
+
+
 # ### Analyzing the target variable - `min_price`
 # 
 # In this dataset, **`min_price`** represents the **minimum price listed** in U$ dollars for laptops and netbooks on eBay. This is our **target variable** for the regression problem we are analyzing, meaning our goal is to predict the minimum price based on other product attributes such as the laptop's brand, specifications, and software/hardware features.
-# 
-# We start by using the `describe()` method to get a summary of the `min_price` feature, which provides key statistical insights such as the count, mean, standard deviation, minimum, maximum, and percentiles of the data. This gives us an overview of the distribution of minimum prices across the dataset.
 
-# In[373]:
+# We start by using the `describe()` method to get a summary of the `min_price` feature, which provides us with an overview of the distribution of minimum prices across the dataset.
+
+# In[67]:
 
 
 df['min_price'].describe()
 
 
-# - **Count**: The dataset has 4,475 rows, with **no missing values** (as indicated by `null_count = 0`), meaning the data is complete.
-# 
-# - **Mean (330.47)**: The average minimum price of the laptops is around $330, which gives us a general idea of the typical price point. However, because of the skewed distribution (as we observed earlier), this value might not accurately represent the "central" value for the majority of listings.
-# 
-# - **Standard Deviation (393.47)**: The large standard deviation relative to the mean suggests that the data has a **wide spread** with significant variance, likely driven by a few high-priced outliers, which aligns with the right skew observed in the plot.
+# - **Count**: The dataset has $4,475$ rows, with **no missing values** (as indicated by `null_count = 0`), meaning the data is complete.
+# - **Mean**: The average minimum price of the laptops is around $330$ U$D, which gives us a general idea of the typical price point.
+# - **Standard Deviation**: The large standard deviation relative to the mean suggests that the data has a **wide spread** with significant variance, likely driven by a few high-priced outliers.
 # 
 
 # Following the summary statistics for `min_price`, we plot its distribution using a combination of a **histogram** and a **Kernel Density Estimate (KDE)** plot. The **histogram** shows the frequency of price ranges, while the **KDE** provides a smoothed curve to better understand the overall shape of the distribution.
 
-# In[374]:
+# In[68]:
 
 
 (
     so.Plot(df, x='min_price')
     .add(so.Bars(color='royalblue'), so.Hist('density'))
     .add(so.Area(color='red', alpha=.15), so.KDE())
-    .label(title='Minimum Price KDE')
+    .limit(x=(0, df['min_price'].max()))
+    .label(title='Minimum Price', x='min_price')
+    .layout(size=(8, 6))
 )
 
 
-# From the chart, we can clearly visualize that most listings are priced lower, there are some listings with much higher prices, which could represent rare or high-end products. The **KDE (Kernel Density Estimate)** provides a smoothed curve over the histogram, offering a clearer view of the overall distribution.
+# From the plot, we can clearly visualize that most listings are priced in a compact and relatively low range ($0-500$ USD), while there are some listings with much higher prices ($1500+$ USD), which could represent high-end laptops.
 # 
-# In summary, this distribution reveals that **the `min_price` data is heavily skewed to the right**, with most of the listings concentrated around lower price points but a small number of listings pushing the prices significantly higher. This kind of skew is common in pricing data, where most products are more affordable, but a few high-end or premium items raise the overall price range.
+# In other words, this figure reveals that the `min_price` data distribution **is heavily skewed to the right**, with most of the listings concentrated around lower price points but a small number of listings pushing the prices significantly higher.
+# 
+# This kind of skew is common in pricing, where most products are affordable, but a few high-end or premium items raise the overall price range.
 
-# In[375]:
+# In[69]:
 
 
 ## TODO : More EDA - AutoEDA? (SweetViz, AutoViz, pandas-profiling) or manual? TBD
@@ -145,7 +178,7 @@ df['min_price'].describe()
 
 # #### **Sentiment Analysis** for `seller_note`
 # 
-# In this section, we perform sentiment analysis on the `seller_note` feature from the eBay dataset using [TextBlob][TextBlob], a simple library that helps analyze and process textual data, built upon python's [Natural Language Toolkit][NLTK]. The goal is to evaluate the sentiment expressed in the seller's notes, identifying whether the comments are **positive**, **negative**, or **neutral**.
+# In this section, we perform sentiment analysis on the `seller_note` feature from the eBay dataset using [TextBlob][TextBlob], a simple library that helps analyze and process textual data, built upon Python's [Natural Language Toolkit][NLTK]. The goal is to evaluate the sentiment expressed in the seller's notes, identifying whether the comments are **positive**, **negative**, or **neutral**.
 # 
 # We calculate the *polarity* and *subjectivity* of each note to understand the sentiment's intensity and whether it reflects personal opinions or objective facts. This simple analysis can help **assess the overall tone of the seller's descriptions**.
 # 
@@ -163,7 +196,9 @@ df['min_price'].describe()
 # [TextBlob]: https://github.com/sloria/TextBlob
 # [NLTK]: https://github.com/nltk/nltk
 
-# In[376]:
+# We start by taking a look at some of the seller notes which appear in the dataset.
+
+# In[70]:
 
 
 df.select(
@@ -173,7 +208,9 @@ df.select(
 ).head(n=10).to_pandas()
 
 
-# In[377]:
+# We continue by creating functions which will allow us to extract the sentiment, polarity and subjectivity from each of the notes.
+
+# In[71]:
 
 
 def get_sentiment_label_by_polarity(polarity: float, threshold: float = 0.1) -> str:
@@ -228,7 +265,7 @@ def get_sentiment_features(text: str, threshold: float = 0.1) -> Tuple[float, fl
     return polarity, subjectivity, sentiment_label
 
 
-# In[378]:
+# In[72]:
 
 
 def get_polarity(text: str, threshold: float = 0.1) -> float:
@@ -298,7 +335,9 @@ def get_sentiment_label(text: str, threshold: float = 0.1) -> str:
     return sentiment_label
 
 
-# In[379]:
+# Now we can extract the polarity, subjectivity and the sentiment from each of the seller notes!
+
+# In[73]:
 
 
 df = df.with_columns(
@@ -317,9 +356,9 @@ df = df.with_columns(
 )
 
 
-# Visualizing the new features for the seller notes:
+# After creating the columns with `polars`, we visualize the newly created features:
 
-# In[380]:
+# In[74]:
 
 
 df.select(
@@ -334,7 +373,7 @@ df.select(
 
 # #### **Visualization** - Seller Note Polarity
 
-# In[381]:
+# In[ ]:
 
 
 (
@@ -345,7 +384,7 @@ df.select(
 )
 
 
-# In[382]:
+# In[ ]:
 
 
 (
@@ -357,7 +396,7 @@ df.select(
 
 # #### **Visualization** - Seller Note Subjectivity
 
-# In[383]:
+# In[ ]:
 
 
 (
@@ -368,7 +407,7 @@ df.select(
 )
 
 
-# In[384]:
+# In[ ]:
 
 
 (
@@ -380,7 +419,7 @@ df.select(
 
 # #### **Visualization** - Seller Note Sentiment
 
-# In[385]:
+# In[ ]:
 
 
 (
@@ -390,7 +429,7 @@ df.select(
 )
 
 
-# In[386]:
+# In[ ]:
 
 
 sns.catplot(data=df, x='seller_note_sentiment_label', kind='box', y='min_price', hue='seller_note_sentiment_label')
@@ -403,7 +442,7 @@ sns.catplot(data=df, x='seller_note_sentiment_label', kind='box', y='min_price',
 )
 
 
-# In[387]:
+# In[ ]:
 
 
 (
@@ -414,7 +453,7 @@ sns.catplot(data=df, x='seller_note_sentiment_label', kind='box', y='min_price',
 )
 
 
-# In[388]:
+# In[ ]:
 
 
 (
@@ -428,7 +467,7 @@ sns.catplot(data=df, x='seller_note_sentiment_label', kind='box', y='min_price',
 
 # #### Standardizing hard drive, RAM & SSD size to their size in gigabytes
 
-# In[389]:
+# In[ ]:
 
 
 df.select([
@@ -437,7 +476,7 @@ df.select([
 ])
 
 
-# In[390]:
+# In[ ]:
 
 
 def convert_to_gb(df_to_convert: pl.DataFrame, size_column: str, unit_column: str):
@@ -460,7 +499,7 @@ def convert_to_gb(df_to_convert: pl.DataFrame, size_column: str, unit_column: st
     )
 
 
-# In[391]:
+# In[ ]:
 
 
 size_columns = [col for col in df.columns if col.endswith('_size')]
@@ -470,7 +509,7 @@ for size_col in size_columns:
     df = convert_to_gb(df, size_col, unit_col)
 
 
-# In[392]:
+# In[ ]:
 
 
 for size in size_columns:
@@ -481,10 +520,10 @@ for size in size_columns:
 
 # ### Feature Selection
 
-# In[393]:
+# In[ ]:
 
 
-# The target variable : the minimum pricer required to purchase the item (laptop/netbook)
+# The target variable : the minimum price required to purchase an item (laptop/netbook)
 target_var = 'min_price'
 # A polars expression for feature selection
 feature_selection_expr = pl.all().exclude(target_var, 'currency', 'condition_description', 'seller_note',
@@ -500,7 +539,7 @@ series_target = df[target_var]
 
 # ### Categorical Features
 
-# In[394]:
+# In[ ]:
 
 
 feature_names = df_features.columns
@@ -527,7 +566,7 @@ print(f'Categorical Features: \n{cat_feature_names}')
 # 
 # [Feature-Engine]: https://github.com/feature-engine/feature_engine
 
-# In[395]:
+# In[ ]:
 
 
 # Sets the minimum count for a category to be kept separately, categories with fewer than 20 occurrences will be grouped.
@@ -561,7 +600,7 @@ for col in cat_feature_names:
 # 1. **First split**: The training set is created with 60% of the data, and the remaining 40% is kept for validation and testing.
 # 2. **Second split**: The remaining 40% of the data is divided equally into validation and test sets, resulting in 20% of the total data being used for validation and 20% for testing.
 
-# In[396]:
+# In[ ]:
 
 
 stratify_col = 'brand'
@@ -605,7 +644,7 @@ df_val, df_test, series_val, series_test = train_test_split(
 # 
 # We start by creating a data frame that will group the count and frequency of each brand according to its set.
 
-# In[397]:
+# In[ ]:
 
 
 # Add a 'subset' column for train, val, and test sets
@@ -635,7 +674,7 @@ proportion_data
 
 # We can now visualize the total brand count per each subset using a faceted bar plot:
 
-# In[398]:
+# In[ ]:
 
 
 fig = plt.figure(figsize=(10, 6))
@@ -657,7 +696,7 @@ fig.tight_layout()
 
 # We can also take a look at the brand proportion in each subset:
 
-# In[399]:
+# In[ ]:
 
 
 # Plot the normalized data (percentages)
@@ -678,7 +717,7 @@ plt.show()
 
 # Now we convert the data from Polars `DataFrames` and `Series` into NumPy `ndarray`, in order to make it compatible with machine learning libraries like `scikit-learn` or `catboost`.
 
-# In[400]:
+# In[ ]:
 
 
 X_train = df_train.to_numpy()
@@ -705,21 +744,21 @@ y_test = series_test.to_numpy()
 # <a href="https://www.researchgate.net/figure/The-flow-diagram-of-the-CatBoost-model_fig3_370695897"><i>The flow diagram of the CatBoost model</i></a>
 # </div>
 
-# In[401]:
+# In[ ]:
 
 
 train_pool = cb.Pool(data=X_train, label=y_train, cat_features=cat_feature_names, feature_names=feature_names)
 val_pool = cb.Pool(data=X_val, label=y_val, cat_features=cat_feature_names, feature_names=feature_names)
 
 
-# In[402]:
+# In[ ]:
 
 
 catboost = cb.CatBoostRegressor(loss_function='RMSE')
 catboost.fit(X=train_pool, eval_set=val_pool, logging_level='Silent')
 
 
-# In[403]:
+# In[ ]:
 
 
 catboost_feature_importance = pl.DataFrame({
@@ -742,7 +781,7 @@ catboost_feature_importance = pl.DataFrame({
 )
 
 
-# In[404]:
+# In[ ]:
 
 
 # Make predictions using the trained model on both the training and validation data
@@ -784,7 +823,7 @@ print(f"MAE score for train {round(mae_train)} USD & for validation {round(mae_v
 
 # ### Objective Function
 
-# In[405]:
+# In[ ]:
 
 
 def objective(trial):
@@ -799,7 +838,7 @@ def objective(trial):
     }
 
     # Train CatBoostRegressor with suggested parameters
-    model = cb.CatBoostRegressor(**params, thread_count=N_CORES)
+    model = cb.CatBoostRegressor(**params, thread_count=N_CORES_HALF)
     model.fit(train_pool, eval_set=val_pool)
 
     # Make predictions and calculate RMSE on the validation set
@@ -841,10 +880,10 @@ def objective(trial):
 # 
 # Pruning trials is a strategy that stops unproductive attempts early, freeing up resources to focus on more promising ones. The pruner evaluates the performance of ongoing trials and terminates those that are unlikely to lead to the best results, thus saving computational resources.
 # 
-# For this project, we'll use Optuna's `HyperbandPruner`, [advised by official benchmarks to be the best when paired with the Tree-Structured Parzen Estimator][Pruning], for non-deep-learning predictive modeling.
+# We'll use Optuna's `HyperbandPruner`, acknowledged by official Optuna benchmarks to be [the best pruner when paired with the `TPESampler`][Pruning] (for non-deep-learning predictive modeling).
 # 
 # <div align="center">
-# <img src="../assets/images/pruning_trials.png" height="200" width=400"/>
+# <img src="../assets/images/pruning_trials.png" height="225" width=500"/>
 # </div>
 # 
 # [Pruning]: https://optuna.readthedocs.io/en/stable/tutorial/10_key_features/003_efficient_optimization_algorithms.html#which-sampler-and-pruner-should-be-used
@@ -852,10 +891,10 @@ def objective(trial):
 
 # Ultimately, we define the `TPESampler` and `HyperbandPruner` and proceed to run the study to minimize the objective function. The number of trials is fixed and defined below:
 
-# In[406]:
+# In[ ]:
 
 
-# Number of trials, it is advised to set it to at least 100 trials.
+# Number of trials, it is advised to set at least 100 trials.
 N_TRIALS = 100
 
 tpe_sampler = optuna.samplers.TPESampler(seed=RANDOM_SEED)
@@ -863,10 +902,10 @@ hyperband_pruner = optuna.pruners.HyperbandPruner()
 
 study = optuna.create_study(study_name='catboost-hopt', sampler=tpe_sampler, pruner=hyperband_pruner,
                             direction='minimize')
-study.optimize(objective, n_trials=N_TRIALS, n_jobs=N_CORES)
+study.optimize(objective, n_trials=N_TRIALS, n_jobs=N_CORES_HALF)
 
 
-# In[407]:
+# In[ ]:
 
 
 print(f'Best Trial: #{study.best_trial.number}')
@@ -874,13 +913,13 @@ print(f'Best Trial Value: {study.best_trial.value}')
 print(f'Best Trial Params: {study.best_trial.params}')
 
 
-# In[408]:
+# In[ ]:
 
 
 vis.plot_param_importances(study)
 
 
-# In[409]:
+# In[ ]:
 
 
 fig = vis.plot_parallel_coordinate(study)
@@ -911,7 +950,7 @@ fig
 # <img src="../assets/logos/shap.png" height="200" width="200"/>
 # </div>
 
-# In[410]:
+# In[ ]:
 
 
 # Run SHAP
