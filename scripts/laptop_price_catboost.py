@@ -24,17 +24,19 @@
 # 
 # In this project, we will leverage several powerful libraries for efficient data manipulation, feature engineering, modeling, and hyperparameter tuning.
 # 
-# - **Scikit-learn**: Used for **training the model**, performing model evaluation, and splitting the dataset in train, validation & test sets.
 # - **CatBoost**: The **core library** for modeling, used to design a gradient boosting model to handle categorical features effectively and provide good performance in regression tasks.
-# - **Optuna**: Utilized for **hyperparameter tuning**, automating the process of finding the best model parameters to improve performance.
+# - **Scikit-learn**: Used for **training the model**, performing model evaluation, and splitting the dataset in train, validation & test sets.
+# - **Polars**: A high-performance DataFrame library optimized for speed and low memory usage.
 # - **Feature Engine**: A library for **feature engineering** that provides various techniques for transforming and selecting features, ensuring that our model has the most relevant data.
-# - **Seaborn**: Used for **exploratory data analysis (EDA)** and plotting, providing intuitive and high-level visualizations to understand the dataset and its relationships.
-# - **SHAP**: Used for **model interpretability**, providing insights into how each feature influences the model's predictions, helping to explain the decisions made by the model & empowering **Explainable AI**.
+# - **Optuna**: Utilized for **hyperparameter tuning**, automating the process of finding the best model parameters to improve performance.
+# - **SHAP**: Empowering **Explainable AI** via *model interpretability*, providing insights into how each feature influences the model's predictions, helping to explain the decisions made by the model.
+# - **Seaborn**: Used for **data visualization** & *Exploratory Data Analysis*. We will specifically leverage the `seaborn.objects` API, a more declarative and flexible approach to plotting, based on the *Grammar of Graphics*.
+# - **TextBlob**: A simple yet powerful library for **natural language processing (NLP)**, used here to analyze sentiment
 # 
 # These libraries will work together to ensure a streamlined and efficient manner for building and optimizing the predictive model.
 # 
 
-# In[1]:
+# In[371]:
 
 
 # Importing libraries and setting constants
@@ -43,6 +45,7 @@
 import polars as pl
 import seaborn as sns
 import seaborn.objects as so
+import matplotlib.pyplot as plt
 import plotly
 import catboost as cb
 import shap
@@ -50,6 +53,7 @@ import optuna
 import optuna.visualization as vis
 import matplotlib.style as style
 from feature_engine.encoding import RareLabelEncoder
+from mpl_toolkits.axes_grid1.axes_size import AxesX
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, root_mean_squared_error, mean_absolute_error
 from textblob import TextBlob
@@ -66,23 +70,49 @@ DATA_SOURCE_PATH = '../data/ebay_laptops_and_netbooks_cleansed.csv'  # Path wher
 
 # ### Loading the dataset
 
-# In[2]:
+# In[372]:
 
 
 df = pl.read_csv(DATA_SOURCE_PATH)
 df.describe()
 
 
+# As the data is already cleansed, there is no need for further preparation.
+
 # ## Exploratory Data Analysis
 # 
+# Exploratory Data Analysis (**EDA**) is the process of **examining, summarizing, and visualizing a dataset** to uncover patterns, detect anomalies, and gain insights before applying statistical analysis. The goal of EDA is to **understand the structure and distribution of the data**, ensuring that it is clean, relevant, and well-prepared for modeling.
+# 
+# ### Why is EDA important?
+# Before training a predictive model, it’s crucial to analyze the dataset to:
+# - **Summary Statistics**: Mean, median, standard deviation, and percentiles to understand central tendency and spread.
+# - **Visualizations**: Histograms, box plots, and scatter plots to spot skewness, outliers, and trends.
+# - **Correlation Analysis**: Examining relationships between variables to detect collinearity or important dependencies.
+# 
+# 
 
-# In[3]:
+# ### Analyzing the target variable - `min_price`
+# 
+# In this dataset, **`min_price`** represents the **minimum price listed** in U$ dollars for laptops and netbooks on eBay. This is our **target variable** for the regression problem we are analyzing, meaning our goal is to predict the minimum price based on other product attributes such as the laptop's brand, specifications, and software/hardware features.
+# 
+# We start by using the `describe()` method to get a summary of the `min_price` feature, which provides key statistical insights such as the count, mean, standard deviation, minimum, maximum, and percentiles of the data. This gives us an overview of the distribution of minimum prices across the dataset.
+
+# In[373]:
 
 
-# TODO : Exploratory Data Analysis
+df['min_price'].describe()
 
 
-# In[4]:
+# - **Count**: The dataset has 4,475 rows, with **no missing values** (as indicated by `null_count = 0`), meaning the data is complete.
+# 
+# - **Mean (330.47)**: The average minimum price of the laptops is around $330, which gives us a general idea of the typical price point. However, because of the skewed distribution (as we observed earlier), this value might not accurately represent the "central" value for the majority of listings.
+# 
+# - **Standard Deviation (393.47)**: The large standard deviation relative to the mean suggests that the data has a **wide spread** with significant variance, likely driven by a few high-priced outliers, which aligns with the right skew observed in the plot.
+# 
+
+# Following the summary statistics for `min_price`, we plot its distribution using a combination of a **histogram** and a **Kernel Density Estimate (KDE)** plot. The **histogram** shows the frequency of price ranges, while the **KDE** provides a smoothed curve to better understand the overall shape of the distribution.
+
+# In[374]:
 
 
 (
@@ -93,7 +123,11 @@ df.describe()
 )
 
 
-# In[5]:
+# From the chart, we can clearly visualize that most listings are priced lower, there are some listings with much higher prices, which could represent rare or high-end products. The **KDE (Kernel Density Estimate)** provides a smoothed curve over the histogram, offering a clearer view of the overall distribution.
+# 
+# In summary, this distribution reveals that **the `min_price` data is heavily skewed to the right**, with most of the listings concentrated around lower price points but a small number of listings pushing the prices significantly higher. This kind of skew is common in pricing data, where most products are more affordable, but a few high-end or premium items raise the overall price range.
+
+# In[375]:
 
 
 ## TODO : More EDA - AutoEDA? (SweetViz, AutoViz, pandas-profiling) or manual? TBD
@@ -124,7 +158,7 @@ df.describe()
 # [TextBlob]: https://github.com/sloria/TextBlob
 # [NLTK]: https://github.com/nltk/nltk
 
-# In[6]:
+# In[376]:
 
 
 df.select(
@@ -134,7 +168,7 @@ df.select(
 ).head(n=10).to_pandas()
 
 
-# In[7]:
+# In[377]:
 
 
 def get_sentiment_label_by_polarity(polarity: float, threshold: float = 0.1) -> str:
@@ -189,7 +223,7 @@ def get_sentiment_features(text: str, threshold: float = 0.1) -> Tuple[float, fl
     return polarity, subjectivity, sentiment_label
 
 
-# In[8]:
+# In[378]:
 
 
 def get_polarity(text: str, threshold: float = 0.1) -> float:
@@ -259,7 +293,7 @@ def get_sentiment_label(text: str, threshold: float = 0.1) -> str:
     return sentiment_label
 
 
-# In[9]:
+# In[379]:
 
 
 df = df.with_columns(
@@ -280,7 +314,7 @@ df = df.with_columns(
 
 # Visualizing the new features for the seller notes:
 
-# In[10]:
+# In[380]:
 
 
 df.select(
@@ -295,7 +329,7 @@ df.select(
 
 # #### **Visualization** - Seller Note Polarity
 
-# In[11]:
+# In[381]:
 
 
 (
@@ -306,7 +340,7 @@ df.select(
 )
 
 
-# In[12]:
+# In[382]:
 
 
 (
@@ -318,18 +352,18 @@ df.select(
 
 # #### **Visualization** - Seller Note Subjectivity
 
-# In[13]:
+# In[383]:
 
 
 (
     so.Plot(df, x='seller_note_subjectivity')
-    .add(so.Bars(color='purple', alpha=.8), so.Hist('density'))
-    .add(so.Area(color='yellow', alpha=.3), so.KDE())
+    .add(so.Bars(color='violet', alpha=.8), so.Hist('density'))
+    .add(so.Area(color='red', alpha=.3), so.KDE())
     .label(title='Seller Note Subjectivity KDE', x='Subjectivity', y='Density')
 )
 
 
-# In[14]:
+# In[384]:
 
 
 (
@@ -341,7 +375,7 @@ df.select(
 
 # #### **Visualization** - Seller Note Sentiment
 
-# In[15]:
+# In[385]:
 
 
 (
@@ -351,7 +385,7 @@ df.select(
 )
 
 
-# In[16]:
+# In[386]:
 
 
 sns.catplot(data=df, x='seller_note_sentiment_label', kind='box', y='min_price', hue='seller_note_sentiment_label')
@@ -364,7 +398,7 @@ sns.catplot(data=df, x='seller_note_sentiment_label', kind='box', y='min_price',
 )
 
 
-# In[17]:
+# In[387]:
 
 
 (
@@ -375,7 +409,7 @@ sns.catplot(data=df, x='seller_note_sentiment_label', kind='box', y='min_price',
 )
 
 
-# In[18]:
+# In[388]:
 
 
 (
@@ -389,7 +423,7 @@ sns.catplot(data=df, x='seller_note_sentiment_label', kind='box', y='min_price',
 
 # #### Standardizing hard drive, RAM & SSD size to their size in gigabytes
 
-# In[19]:
+# In[389]:
 
 
 df.select([
@@ -398,7 +432,7 @@ df.select([
 ])
 
 
-# In[20]:
+# In[390]:
 
 
 def convert_to_gb(df_to_convert: pl.DataFrame, size_column: str, unit_column: str):
@@ -421,7 +455,7 @@ def convert_to_gb(df_to_convert: pl.DataFrame, size_column: str, unit_column: st
     )
 
 
-# In[21]:
+# In[391]:
 
 
 size_columns = [col for col in df.columns if col.endswith('_size')]
@@ -431,7 +465,7 @@ for size_col in size_columns:
     df = convert_to_gb(df, size_col, unit_col)
 
 
-# In[22]:
+# In[392]:
 
 
 for size in size_columns:
@@ -442,7 +476,7 @@ for size in size_columns:
 
 # ### Feature Selection
 
-# In[23]:
+# In[393]:
 
 
 # The target variable : the minimum pricer required to purchase the item (laptop/netbook)
@@ -461,7 +495,7 @@ series_target = df[target_var]
 
 # ### Categorical Features
 
-# In[24]:
+# In[394]:
 
 
 feature_names = df_features.columns
@@ -475,9 +509,9 @@ print(f'Categorical Features: \n{cat_feature_names}')
 
 # ### Encoding rare labels
 # 
-# In this project, we leverage the [**Feature-engine**][Feature-Engine] package to handle categorical variables efficiently, specifically using `RareLabelEncoder` to group infrequent categories under a common label.
-# 
 # Rare categories in a dataset can introduce **high cardinality**, making statistical analysis and model generalization more challenging. By setting a **minimum frequency threshold**, we ensure that only sufficiently common categories remain distinct, while rare ones are grouped into an "other" category.
+# 
+# In this project, we'll leverage the [**Feature-engine**][Feature-Engine] package to handle categorical variables efficiently, specifically using `RareLabelEncoder` to group infrequent categories under a common label.
 # 
 # This reduces noise, prevents overfitting, and enhances model interpretability without significantly losing information.
 # 
@@ -488,7 +522,7 @@ print(f'Categorical Features: \n{cat_feature_names}')
 # 
 # [Feature-Engine]: https://github.com/feature-engine/feature_engine
 
-# In[25]:
+# In[395]:
 
 
 # Sets the minimum count for a category to be kept separately, categories with fewer than 20 occurrences will be grouped.
@@ -506,19 +540,23 @@ for col in cat_feature_names:
 
 # ## Machine Learning
 
-# In[26]:
-
-
-# TODO : Machine Learning
-
-
-# ### Splitting the data - Train-Validation-Test Split
+# ### Train-Validation-Test Split
+# 
+# We now perform the train-validation-test split, where we divide the dataset into three separate subsets:
+# 
+# - **Training set**: 60% of the data. As it names states, it is used to train the model, that is, the model uses it to find relationships and general patterns in the data.
+# - **Validation set**: 20% of the data. Used to tune hyperparameters and make decisions about the model architecture, while the test set is kept completely unseen
+# - **Test set**: 20% of the data. Ensures an unbiased evaluation of the final model.
 # 
 # <div align="center">
 # <img src="../assets/images/train_test_validation_split.png" height="326" width="500"/>
 # </div>
 
-# In[27]:
+# The dataset is split in two stages:
+# 1. **First split**: The training set is created with 60% of the data, and the remaining 40% is kept for validation and testing.
+# 2. **Second split**: The remaining 40% of the data is divided equally into validation and test sets, resulting in 20% of the total data being used for validation and 20% for testing.
+
+# In[396]:
 
 
 stratify_col = 'brand'
@@ -539,7 +577,103 @@ df_val, df_test, series_val, series_test = train_test_split(
     random_state=RANDOM_SEED, )
 
 
-# In[28]:
+# **NOTE**: By setting `stratify=df_features[stratify_col]`, we ensure that each of our subsets maintains the proportion of different brands as it appears in the original dataset.
+# This is analyzed in the following section, with further detail.
+
+# ### Stratified Sampling
+# 
+# Stratified sampling is a statistical technique used to ensure that specific subgroups, or "strata", are well-represented in a sample. Unlike random sampling, which can underrepresent smaller groups, stratified sampling divides the population into subgroups based on a characteristic (e.g., `brand` in our dataset) and samples from each subgroup proportionally.
+# 
+# #### How It Works:
+# 
+# 1. **Identify Strata**: Divide the population into mutually exclusive subgroups based on a relevant characteristic (e.g., `brand`).
+# 2. **Proportional Sampling**: Draw samples from each stratum, typically in proportion to the size of that stratum in the population.
+# 3. **Create a Representative Sample**: The result is a sample that reflects the diversity of the population, ensuring all subgroups are adequately represented.
+# 
+# 
+# 
+# <div align="center">
+# <img src="../assets/images/stratified_sampling.png" height="300" width="600"/>
+# </div>
+
+# In this section, we are going to inspect the distribution of laptop brands across the different subsets of our dataset: train, validation, and test, to ensure that our stratified sampling technique has maintained the proper distribution of brands in each subset for the modeling process.
+# 
+# We start by creating a data frame that will group the count and frequency of each brand according to its set.
+
+# In[397]:
+
+
+# Add a 'subset' column for train, val, and test sets
+train_strata = df_train.with_columns(pl.lit('train').alias('set'))
+val_strata = df_val.with_columns(pl.lit('val').alias('set'))
+test_strata = df_test.with_columns(pl.lit('test').alias('set'))
+
+# Concatenate the Polars DataFrames
+combined_strata = pl.concat(
+    [train_strata[['brand', 'set']], val_strata[['brand', 'set']], test_strata[['brand', 'set']]])
+
+# Group by 'brand' and 'set' and get the count for each group
+proportion_data = combined_strata.group_by(['brand', 'set']).agg(pl.len().alias('count'))
+
+# Normalize the counts to get proportions by set
+proportion_data = proportion_data.with_columns(
+    (pl.col('count') / pl.col('count').sum().over('set')).alias('proportion')
+).sort(by='proportion', descending=True)
+proportion_data_labels = proportion_data['brand']
+
+proportion_data
+
+
+# As seen above in the dataframe, the proportion remains similar in every subset which implies that the stratified sampling process has successfully **preserved the original distribution of brands across all splits**.
+# 
+# This ensures that each subset remains representative of the overall dataset, preventing biases that could arise from imbalanced sampling.
+
+# We can now visualize the total brand count per each subset using a faceted bar plot:
+
+# In[398]:
+
+
+fig = plt.figure(figsize=(10, 6))
+
+(
+    so.Plot(proportion_data, x="brand", y='count', color='set')
+    .add(so.Bar())
+    .on(fig)
+    .facet('set')
+    .label(title='Brand Count', color='subset')
+    .plot()
+)
+
+for ax in fig.axes:
+    ax.tick_params(axis='x', rotation=90)
+
+fig.tight_layout()
+
+
+# We can also take a look at the brand proportion in each subset:
+
+# In[399]:
+
+
+# Plot the normalized data (percentages)
+plt.figure(figsize=(10, 6))
+sns.barplot(data=proportion_data, x='brand', y='proportion', hue='set')
+
+# Add labels and title
+plt.title('Proportion of Brands per set')
+plt.xticks(rotation=45, ha='right')
+plt.ylabel('Percentage')
+plt.tight_layout()
+plt.show()
+
+
+# In summary, by doing stratified sampling, we have ensured that the distribution of brands remains consistent across train, validation, and test sets, preserving the statistical properties of the original dataset.
+# 
+# This is crucial as without stratification, rare brands might be underrepresented in certain subsets, leading to biased model training, overfitting and poor generalization.
+
+# Now we convert the data from Polars `DataFrames` and `Series` into NumPy `ndarray`, in order to make it compatible with machine learning libraries like `scikit-learn` or `catboost`.
+
+# In[400]:
 
 
 X_train = df_train.to_numpy()
@@ -566,21 +700,21 @@ y_test = series_test.to_numpy()
 # <a href="https://www.researchgate.net/figure/The-flow-diagram-of-the-CatBoost-model_fig3_370695897"><i>The flow diagram of the CatBoost model</i></a>
 # </div>
 
-# In[29]:
+# In[401]:
 
 
 train_pool = cb.Pool(data=X_train, label=y_train, cat_features=cat_feature_names, feature_names=feature_names)
 val_pool = cb.Pool(data=X_val, label=y_val, cat_features=cat_feature_names, feature_names=feature_names)
 
 
-# In[30]:
+# In[402]:
 
 
 catboost = cb.CatBoostRegressor(loss_function='RMSE')
 catboost.fit(X=train_pool, eval_set=val_pool, logging_level='Silent')
 
 
-# In[40]:
+# In[403]:
 
 
 catboost_feature_importance = pl.DataFrame({
@@ -603,7 +737,7 @@ catboost_feature_importance = pl.DataFrame({
 )
 
 
-# In[32]:
+# In[404]:
 
 
 # Make predictions using the trained model on both the training and validation data
@@ -625,24 +759,34 @@ print(f"MAE score for train {round(mae_train)} USD & for validation {round(mae_v
 
 # ## Hyperparameter Tuning
 # 
+# Hyperparameter tuning is the process of selecting the most optimal set of hyperparameters for a machine learning model to improve its performance. These hyperparameters are set before training and control aspects like learning rate, model complexity, and regularization. The goal is to find the combination that leads to the best results in terms of accuracy, speed, or other performance metrics.
+# 
+# ### Why It Matters:
+# - **Hyperparameters**: Unlike model parameters that are learned from the data, hyperparameters are fixed before training. Examples include the learning rate, number of hidden layers in a neural network, or the number of trees in a random forest.
+# - **Objective**: The goal is to adjust these hyperparameters to minimize the error or loss function, ultimately making the model generalize well to unseen data.
+# 
+# ### Common Approaches:
+# - **Grid Search**: Tests all combinations of hyperparameters in a predefined grid, but it’s computationally expensive.
+# - **Random Search**: Randomly selects hyperparameter values from a specified range, offering a more efficient exploration compared to grid search.
+# - **Bayesian Optimization**: Uses models to predict the performance of different hyperparameter combinations and explores the space in a smarter way, often using fewer trials to find the best values.
+# 
+# For this project, we will use **Optuna**, a state-of-the-art library which employs *Bayesian Optimization*, a more efficient approach that intelligently explores the hyperparameter space, balancing exploration and exploitation to quickly find the best-performing parameters with fewer trials.
+# 
+# <br>
 # <div align="center">
-# <img src="../assets/logos/optuna.png" height="375" width="375"/>
+# <img src="../assets/logos/optuna.png" height="200" width=400"/>
 # </div>
 
-# In[33]:
+# ### Objective Function
 
-
-# TODO : Hyperparameter Tuning
-
-
-# In[34]:
+# In[405]:
 
 
 def objective(trial):
     # Define hyperparameter search space for optimization
     params = {
-        'iterations': trial.suggest_int('iterations', 400, 500),  # Number of iterations
-        'depth': trial.suggest_int('depth', 4, 6),  # Max depth of trees
+        'iterations': trial.suggest_int('iterations', 100, 500),  # Number of iterations
+        'depth': trial.suggest_int('depth', 3, 6),  # Max depth of trees
         'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.1, log=True),  # Learning rate
         'loss_function': 'RMSE',  # Loss function to optimize
         'verbose': 0,  # Set verbosity level to 0
@@ -660,17 +804,64 @@ def objective(trial):
     return trial_rmse
 
 
-# In[35]:
+# ### Bayesian Optimization
 
+# #### Tree Structured Parzen Estimator (TPE)
+# 
+# A **Tree-structured Parzen Estimator** is a probabilistic model that models the distribution of hyperparameters in a hierarchical (tree-structured) way. The key idea is to use a non-parametric density estimator, based on the Parzen Estimator, to represent the probability distribution of the hyperparameters.
+# 
+# By introducing a threshold ($y^*$), TPE divides the observed data into two subsets:
+# 
+# \begin{split}
+# l(x) = & \, \text{PDF for hyperparameters with performance } y < y^*, \\
+# g(x) = & \, \text{PDF for hyperparameters with performance } y \geq y^*.
+# \end{split}
+# 
+# These subsets are then used to construct non-parametric density estimators, typically Gaussian Mixture Models (GMMs), which approximate the distributions of hyperparameters associated with different performance levels.
+# 
+# During the optimization process, TPE seeks hyperparameter configurations that maximize the ratio:
+# 
+# \begin{split}
+# \frac{l(x)}{g(x)}
+# \end{split}
+# 
+# This focuses the search on regions of the hyperparameter space that are more likely to yield superior performance.
+# 
+# 
+# <div align="center">
+# <img src="../assets/images/random_search_vs_smbo.png" height="300" width=700"/>
+# </div>
+
+# #### Pruning
+# 
+# Pruning trials is a strategy that stops unproductive attempts early, freeing up resources to focus on more promising ones. The pruner evaluates the performance of ongoing trials and terminates those that are unlikely to lead to the best results, thus saving computational resources.
+# 
+# For this project, we'll use Optuna's `HyperbandPruner`, [advised by official benchmarks to be the best when paired with the Tree-Structured Parzen Estimator][Pruning], for non-deep-learning predictive modeling.
+# 
+# <div align="center">
+# <img src="../assets/images/pruning_trials.png" height="200" width=400"/>
+# </div>
+# 
+# [Pruning]: https://optuna.readthedocs.io/en/stable/tutorial/10_key_features/003_efficient_optimization_algorithms.html#which-sampler-and-pruner-should-be-used
+# 
+
+# Ultimately, we define the `TPESampler` and `HyperbandPruner` and proceed to run the study to minimize the objective function. The number of trials is fixed and defined below:
+
+# In[406]:
+
+
+# Number of trials, it is advised to set it to at least 100 trials.
+N_TRIALS=100
 
 tpe_sampler = optuna.samplers.TPESampler(seed=RANDOM_SEED)
 hyperband_pruner = optuna.pruners.HyperbandPruner()
 
-study = optuna.create_study(study_name='catboost-hyperopt', direction='minimize')
-study.optimize(objective, n_trials=50, n_jobs=N_CORES)
+study = optuna.create_study(study_name='catboost-hopt', sampler=tpe_sampler, pruner=hyperband_pruner,
+                            direction='minimize')
+study.optimize(objective, n_trials=N_TRIALS, n_jobs=N_CORES)
 
 
-# In[36]:
+# In[407]:
 
 
 print(f'Best Trial: #{study.best_trial.number}')
@@ -678,13 +869,13 @@ print(f'Best Trial Value: {study.best_trial.value}')
 print(f'Best Trial Params: {study.best_trial.params}')
 
 
-# In[37]:
+# In[408]:
 
 
 vis.plot_param_importances(study)
 
 
-# In[38]:
+# In[409]:
 
 
 fig = vis.plot_parallel_coordinate(study)
@@ -712,10 +903,10 @@ fig
 #   - How the values of these features interact with the model.
 # 
 # <div align="center">
-# <img src="../assets/logos/shap.png" height="375" width="375"/>
+# <img src="../assets/logos/shap.png" height="200" width="200"/>
 # </div>
 
-# In[39]:
+# In[410]:
 
 
 # Run SHAP
