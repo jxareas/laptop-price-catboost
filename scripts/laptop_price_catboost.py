@@ -42,23 +42,23 @@
 # Importing libraries and setting constants
 
 # Libraries
+import os
+from typing import Tuple
+
+import catboost as cb
+import matplotlib.pyplot as plt
+import matplotlib.style as style
+import optuna
+import optuna.visualization as vis
+import plotly
 import polars as pl
 import seaborn as sns
 import seaborn.objects as so
-import matplotlib.pyplot as plt
-import plotly
-import catboost as cb
 import shap
-import optuna
-import optuna.visualization as vis
-import matplotlib.style as style
 from feature_engine.encoding import RareLabelEncoder
-from mpl_toolkits.axes_grid1.axes_size import AxesX
+from sklearn.metrics import root_mean_squared_error, mean_absolute_error
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import r2_score, root_mean_squared_error, mean_absolute_error
 from textblob import TextBlob
-import os
-from typing import Tuple
 
 # Constants
 RANDOM_SEED = 287  # Random Seed for reproducibility
@@ -78,6 +78,11 @@ df.describe()
 
 
 # As the data is already cleansed, there is no need for further preparation.
+# 
+# For further details on how the data cleansing process was carried out, feel free to check the *Data Cleansing Notebook* in either [GitHub][CLEANSING_NOTEBOOK_GITHUB_URL] & [Kaggle][CLEANSING_NOTEBOOK_KAGGLE_URL]
+# 
+# [CLEANSING_NOTEBOOK_GITHUB_URL]: https://github.com/jxareas/laptop-price-catboost/blob/master/notebooks/laptop_data_cleansing.ipynb
+# [CLEANSING_NOTEBOOK_KAGGLE_URL]: .
 
 # ## Exploratory Data Analysis
 # 
@@ -851,7 +856,7 @@ def objective(trial):
 
 
 # Number of trials, it is advised to set it to at least 100 trials.
-N_TRIALS=100
+N_TRIALS = 100
 
 tpe_sampler = optuna.samplers.TPESampler(seed=RANDOM_SEED)
 hyperband_pruner = optuna.pruners.HyperbandPruner()
