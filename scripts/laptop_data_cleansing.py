@@ -51,6 +51,7 @@
 import re
 from typing import Optional, Tuple, Callable, Any
 
+import pandas as pd
 import polars as pl
 from polars import LazyFrame
 
@@ -159,65 +160,33 @@ print(f'Total rows after removing duplicates {df.height}')
 # In[8]:
 
 
-def value_counts_with_proportion(dataframe: pl.DataFrame,
-                                 col: str,
+def value_counts_with_proportion(series: pl.Series,
                                  proportion_col_alias: str = 'proportion',
-                                 to_pandas: bool = False) -> pl.DataFrame:
+                                 sort: bool = True,
+                                 parallel: bool = True,
+                                 decimals: int = 2,
+                                 convert_to_pandas: bool = False) -> pl.DataFrame | pd.DataFrame:
     """
-    Calculate the value counts for a specified column in a Polars DataFrame and return a DataFrame with
-    the counts and their corresponding proportions.
+    Compute value counts and their proportions for a Polars Series.
 
     Args:
-        col (str): The name of the column for which value counts should be calculated.
-        dataframe (pl.DataFrame, optional): The Polars DataFrame on which the operation should be performed.
-                                            Defaults to the global 'df' variable.
-        proportion_col_alias (str, optional): The alias name for the proportion column. Defaults to 'proportion'.
-        to_pandas (bool, optional): Whether to convert the result to a Pandas DataFrame. Defaults to False.
+        series (pl.Series): Input Polars Series.
+        proportion_col_alias (str, optional): Name for the proportion column. Defaults to 'proportion'.
+        sort (bool, optional): Whether to sort results by count. Defaults to True.
+        parallel (bool, optional): Whether to use parallel processing. Defaults to True.
+        decimals (int, optional): Number of decimal places for proportions. Defaults to 2.
+        convert_to_pandas (bool, optional): If True, return a Pandas DataFrame. Defaults to False.
 
     Returns:
-        pl.DataFrame or pd.DataFrame: A DataFrame containing the unique values in the specified column, their respective
-                                      counts, and their proportions (as a percentage of the total number of rows).
-                                      The result is a Polars DataFrame by default, but can be returned as a Pandas DataFrame
-                                      if `to_pandas=True`.
-
-    Example:
-        # Sample DataFrame
-        df = pl.DataFrame({
-            "category": ["A", "B", "A", "C", "B", "B", "C", "A", "A"]
-        })
-
-        # Usage of the function
-        result = value_counts_with_proportion(col="category", dataframe=df)
-        print(result)
-
-    Output:
-        shape: (3, 3)
-        ┌─────────┬────────┬────────────┐
-        │ category│ count  │ proportion │
-        │ ---     │ ---    │ ---        │
-        │ str     │ i64    │ f64        │
-        ├─────────┼────────┼────────────┤
-        │ A       │ 4      │ 0.44       │
-        │ B       │ 3      │ 0.33       │
-        │ C       │ 2      │ 0.22       │
-        └─────────┴────────┴────────────┘
-
-    Notes:
-        - The function uses `value_counts()` to compute the frequency of each unique value in the specified column.
-        - The proportions are calculated by dividing the count of each unique value by the total number of rows (`df.height`).
-        - The proportions are rounded to 2 decimal places.
-        - The function supports parallel processing for faster execution on large datasets.
+        pl.DataFrame or pd.DataFrame: DataFrame with unique values, counts, and proportions.
     """
-    # Compute value counts with proportions
-    sorted_df_with_prop = dataframe[col].value_counts(
-        sort=True,
-        parallel=True,
-    ).with_columns(
-        (pl.col('count') / dataframe.height).round(2).alias(proportion_col_alias)
+    total_count = series.len()
+
+    result = series.value_counts(sort=sort, parallel=parallel).with_columns(
+        (pl.col('count') / total_count).round(decimals).alias(proportion_col_alias)
     )
 
-    # Return as Pandas DataFrame if to_pandas=True, else return Polars DataFrame
-    return sorted_df_with_prop.to_pandas() if to_pandas else sorted_df_with_prop
+    return result.to_pandas() if convert_to_pandas else result
 
 
 # ## Cleaning `brand`
@@ -230,7 +199,7 @@ def value_counts_with_proportion(dataframe: pl.DataFrame,
 
 
 # Taking a look at the frequency of each brand: total count and proportion
-value_counts_with_proportion(dataframe=df, col='brand')
+value_counts_with_proportion(df['brand'])
 
 
 # ### **Reformatting `brand`:**
@@ -332,7 +301,7 @@ df = df.with_columns(
 
 
 # Taking another look at the frequency of each brand: total count and proportion
-value_counts_with_proportion(dataframe=df, col='brand_clean')
+value_counts_with_proportion(df['brand_clean'])
 
 
 # Observations:
@@ -394,7 +363,7 @@ df.select(
 
 
 # Taking a look at the frequency of each rating: total count and proportion
-value_counts_with_proportion(dataframe=df, col='rating')
+value_counts_with_proportion(df['rating'])
 
 
 # Observations:
@@ -406,7 +375,7 @@ value_counts_with_proportion(dataframe=df, col='rating')
 
 
 # Taking a look at the frequency of each rating count: total count and proportion
-value_counts_with_proportion(dataframe=df, col='ratings_count')
+value_counts_with_proportion(df['ratings_count'])
 
 
 # Observations:
@@ -513,7 +482,7 @@ dict(ratings_count_columns_dtypes)
 
 
 # Taking a look at the values counts for the `condition` column
-value_counts_with_proportion(dataframe=df, col='condition')
+value_counts_with_proportion(df['condition'])
 
 
 # Observations:
@@ -704,7 +673,7 @@ df.unique(
 
 
 # Taking a look at the values counts for the `condition_label_clean` column
-value_counts_with_proportion(dataframe=df, col='condition_label_clean')
+value_counts_with_proportion(df['condition_label_clean'])
 
 
 # Observations:
@@ -716,7 +685,7 @@ value_counts_with_proportion(dataframe=df, col='condition_label_clean')
 # In[29]:
 
 
-value_counts_with_proportion(dataframe=df, col='seller_note', to_pandas=True)
+value_counts_with_proportion(series=df['seller_note'], convert_to_pandas=True)
 
 
 # Observations:
@@ -751,7 +720,7 @@ df.select(
 
 
 # Taking a look at the values counts for the `processor` column
-value_counts_with_proportion(dataframe=df, col='processor')
+value_counts_with_proportion(df['processor'])
 
 
 # Observations:
@@ -819,7 +788,7 @@ df.select(
 
 
 # Taking a look the new `processor_clean` column and its value counts
-value_counts_with_proportion(dataframe=df, col='processor_clean')
+value_counts_with_proportion(df['processor_clean'])
 
 
 # ## Cleaning `screen_size`
@@ -828,7 +797,7 @@ value_counts_with_proportion(dataframe=df, col='processor_clean')
 
 
 # Screen size value counts and their proportion
-value_counts_with_proportion(dataframe=df, col='screen_size', to_pandas=True)
+value_counts_with_proportion(df['screen_size'], convert_to_pandas=True)
 
 
 # ### Extracting inches from `screen_size`
@@ -938,7 +907,7 @@ df['screen_size_inches_clean'].describe()
 
 
 # Color value counts and their proportion
-value_counts_with_proportion(dataframe=df, col='manufacturer_color')
+value_counts_with_proportion(df['manufacturer_color'])
 
 
 # Observations:
@@ -956,7 +925,7 @@ value_counts_with_proportion(dataframe=df, col='manufacturer_color')
 
 
 # Color value counts and their proportion
-value_counts_with_proportion(dataframe=df, col='color')
+value_counts_with_proportion(df['color'])
 
 
 # Observations:
@@ -1265,7 +1234,7 @@ df.select(
 
 
 # Color cleaned value counts and their proportion
-value_counts_with_proportion(dataframe=df, col='color_clean')
+value_counts_with_proportion(df['color_clean'])
 
 
 # Observations:
@@ -1289,19 +1258,19 @@ value_counts_with_proportion(dataframe=df, col='color_clean')
 # In[51]:
 
 
-value_counts_with_proportion(dataframe=df, col='ram_size')
+value_counts_with_proportion(df['ram_size'])
 
 
 # In[52]:
 
 
-value_counts_with_proportion(dataframe=df, col='ssd_capacity')
+value_counts_with_proportion(df['ssd_capacity'])
 
 
 # In[53]:
 
 
-value_counts_with_proportion(dataframe=df, col='hard_drive_capacity')
+value_counts_with_proportion(df['hard_drive_capacity'])
 
 
 # ### **Reformatting & Cleaning Process:**
@@ -1481,7 +1450,7 @@ df.select(
 # In[58]:
 
 
-value_counts_with_proportion(dataframe=df, col='gpu')
+value_counts_with_proportion(df['gpu'])
 
 
 # Observations:
@@ -1548,7 +1517,7 @@ df = df.with_columns(
     .alias("gpu_type_clean")
 )
 
-value_counts_with_proportion(dataframe=df, col='gpu_type_clean')
+value_counts_with_proportion(df['gpu_type_clean'])
 
 
 # ## Cleaning `processor_speed`
@@ -1558,7 +1527,7 @@ value_counts_with_proportion(dataframe=df, col='gpu_type_clean')
 # In[61]:
 
 
-value_counts_with_proportion(dataframe=df, col='processor_speed')
+value_counts_with_proportion(df['processor_speed'])
 
 
 # Observations:
@@ -1657,13 +1626,13 @@ df = df.with_columns(
 # In[64]:
 
 
-value_counts_with_proportion(dataframe=df, col='processor_speed_clean')
+value_counts_with_proportion(df['processor_speed_clean'])
 
 
 # In[65]:
 
 
-value_counts_with_proportion(dataframe=df, col='processor_speed_unit_clean')
+value_counts_with_proportion(df['processor_speed_unit_clean'])
 
 
 # ## Cleaning `type`
@@ -1680,7 +1649,7 @@ value_counts_with_proportion(dataframe=df, col='processor_speed_unit_clean')
 # In[66]:
 
 
-value_counts_with_proportion(dataframe=df, col='type')
+value_counts_with_proportion(df['type'])
 
 
 # We will clean the variable as aforementioned, by:
@@ -1759,7 +1728,7 @@ df = df.with_columns(
 # In[69]:
 
 
-value_counts_with_proportion(dataframe=df, col='laptop_type_clean')
+value_counts_with_proportion(df['laptop_type_clean'])
 
 
 # Observations:
@@ -1776,7 +1745,7 @@ value_counts_with_proportion(dataframe=df, col='laptop_type_clean')
 # In[70]:
 
 
-value_counts_with_proportion(dataframe=df, col='release_year')
+value_counts_with_proportion(df['release_year'])
 
 
 # ### Observations:
@@ -1797,7 +1766,7 @@ df = df.with_columns(
 # In[72]:
 
 
-value_counts_with_proportion(dataframe=df, col='release_year_clean')
+value_counts_with_proportion(df['release_year_clean'])
 
 
 # Observations:
@@ -1807,12 +1776,14 @@ value_counts_with_proportion(dataframe=df, col='release_year_clean')
 
 # ## Cleaning `maximum_resolution`
 # 
-# The `maximum_resolution` variable represents the display resolution of laptops listed on eBay, typically shown as a combination of width and height in pixels (e.g., "1920 x 1080" or "Full HD"). However, this column contains various inconsistencies, including multiple ways of representing resolutions, variations in spacing, and occasional non-resolution data (like "See Title/Description"). These inconsistencies can hinder analysis and require cleaning to standardize the values.
+# The `maximum_resolution` variable represents the display resolution of laptops listed on eBay, typically shown as a combination of width and height in pixels (e.g., `'1920 x 1080'` or `'Full HD'`).
+# 
+# However, this column contains various inconsistencies, including multiple ways of representing resolutions, variations in spacing, and occasional non-resolution data (like `'See Title/Description'`). These inconsistencies can hinder analysis and require cleaning to standardize the values.
 
 # In[73]:
 
 
-value_counts_with_proportion(dataframe=df, col='maximum_resolution')
+value_counts_with_proportion(df['maximum_resolution'])
 
 
 # Observations:
@@ -1969,13 +1940,13 @@ df = df.with_columns(
 # In[77]:
 
 
-value_counts_with_proportion(dataframe=df, col='display_height_clean')
+value_counts_with_proportion(df['display_height_clean'])
 
 
 # In[78]:
 
 
-value_counts_with_proportion(dataframe=df, col='display_width_clean')
+value_counts_with_proportion(df['display_width_clean'])
 
 
 # ## Cleaning `model`
@@ -1987,7 +1958,7 @@ value_counts_with_proportion(dataframe=df, col='display_width_clean')
 # In[79]:
 
 
-value_counts_with_proportion(dataframe=df, col='model')
+value_counts_with_proportion(df['model'])
 
 
 # In[80]:
@@ -2004,6 +1975,8 @@ df = df.with_columns(
 
 df.select(
     'model', 'model_clean'
+).filter(
+    pl.col('model').is_not_null()
 ).head(n=10)
 
 
@@ -2024,7 +1997,7 @@ df.select(
 
 
 # Operating system value counts and their proportion.
-value_counts_with_proportion(dataframe=df, col='os')
+value_counts_with_proportion(df['os'])
 
 
 # Observations:
@@ -2097,7 +2070,7 @@ df = df.with_columns(
 )
 
 # Operating system cleaned value counts and their proportion.
-value_counts_with_proportion(dataframe=df, col='os_clean')
+value_counts_with_proportion(df['os_clean'])
 
 
 # ## Cleaning `features`
@@ -2110,7 +2083,7 @@ value_counts_with_proportion(dataframe=df, col='os_clean')
 
 
 # Operating system cleaned value counts and their proportion.
-value_counts_with_proportion(dataframe=df, col='features')
+value_counts_with_proportion(df['features'])
 
 
 # ### Observations:
@@ -2137,7 +2110,7 @@ df['features_clean'].head(n=10)
 # In[86]:
 
 
-value_counts_with_proportion(dataframe=df, col='features_clean')
+value_counts_with_proportion(df['features_clean'])
 
 
 # ## Cleaning `country_region_of_manufacturer`
@@ -2150,7 +2123,7 @@ value_counts_with_proportion(dataframe=df, col='features_clean')
 
 
 # Country region of manufacturer value counts and their proportion.
-value_counts_with_proportion(dataframe=df, col='country_region_of_manufacturer')
+value_counts_with_proportion(df['country_region_of_manufacturer'])
 
 
 # Observations:
@@ -2183,7 +2156,7 @@ df.select(
 
 
 # Country of manufacturer cleaned value counts and their proportion.
-value_counts_with_proportion(dataframe=df, col='country_of_manufacturer_clean')
+value_counts_with_proportion(df['country_of_manufacturer_clean'])
 
 
 # ## Cleaning `storage_type`
@@ -2202,7 +2175,7 @@ value_counts_with_proportion(dataframe=df, col='country_of_manufacturer_clean')
 
 
 # Storage type value counts and their proportion.
-value_counts_with_proportion(dataframe=df, col='storage_type')
+value_counts_with_proportion(df['storage_type'])
 
 
 # Observations:
@@ -2285,7 +2258,7 @@ df.select(
 
 
 # Storage type cleaned value counts and their proportion.
-value_counts_with_proportion(dataframe=df, col='storage_type_clean')
+value_counts_with_proportion(df['storage_type_clean'])
 
 
 # Observations:
@@ -2311,13 +2284,12 @@ print(clean_columns)
 
 df_clean = df.select(clean_columns)
 df_clean.columns = [col.replace('_clean', '') for col in df_clean.columns]
-df_clean.to_pandas().head(n=10)
 
 
 # In[96]:
 
 
-df_clean.to_pandas().head(n=10)
+df_clean.head(n=10).to_pandas()
 
 
 # Now, we'll export this dataset to a csv file, named `ebay_laptops_and_notebooks_cleansed.csv`.
