@@ -36,7 +36,7 @@
 # These libraries will work together to ensure a streamlined and efficient manner for building and optimizing our predictive modeling.
 # 
 
-# In[63]:
+# In[1]:
 
 
 # Importing libraries and setting constants
@@ -63,17 +63,17 @@ from textblob import TextBlob
 # Constants
 RANDOM_SEED = 287  # Random seed for reproducibility
 N_CORES_HALF = os.cpu_count() / 2  # Half the number of cores available
-DATA_SOURCE_PATH = '../data/ebay_laptops_and_netbooks_cleansed.csv'  # Path wherein the data is located
+DATA_SOURCE_PATH = '../data/processed/ebay_laptops_and_netbooks_cleansed.parquet'  # Path wherein the data is located
 
 
 # ## Data Loading
 
 # We import the data set from the `DATA_SOURCE_PATH` location and check the first 5 rows.
 
-# In[64]:
+# In[2]:
 
 
-df = pl.read_csv(DATA_SOURCE_PATH)
+df = pl.read_parquet(DATA_SOURCE_PATH)
 df.head(n=5)
 
 
@@ -99,11 +99,34 @@ df.head(n=5)
 
 # ### Exploring the Data Set
 
+# #### Data Types
+
+# In[15]:
+
+
+df_column_dtypes = pl.DataFrame(data={
+    'column': df.columns,
+    'dtype': [str(dtype).split('(', 1)[0] for dtype in df.dtypes]  # Remove everything after '('
+})
+df_column_dtypes
+
+
+# In[17]:
+
+
+(
+    df_column_dtypes
+    .group_by(by='dtype')
+    .agg(pl.count('column'))
+    .sort(by='column', descending=True)
+)
+
+
 # #### Summary Statistics
 # 
 # Before anything else, we check some of the summary statistics for each variable, that is, their count, average, standard deviation, etc.
 
-# In[65]:
+# In[ ]:
 
 
 df.describe()

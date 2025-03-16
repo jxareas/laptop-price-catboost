@@ -49,15 +49,15 @@
 
 # Libraries
 import re
-from typing import Optional, Tuple, Callable, Any
+from typing import Optional, Tuple, Callable, Any, Reversible
 
 import pandas as pd
 import polars as pl
 from polars import LazyFrame
 
 # Constants
-DATA_SOURCE_PATH = '../data/ebay_laptops_and_netbooks.csv'
-DATA_OUTPUT_LOCATION_PATH = '../data/ebay_laptops_and_netbooks_cleansed.csv'
+DATA_SOURCE_PATH = '../data/raw/ebay_laptops_and_netbooks.csv'
+DATA_OUTPUT_LOCATION_PATH = '../data/processed/ebay_laptops_and_netbooks_cleansed.parquet'
 
 
 # ## Data Exploration
@@ -189,13 +189,36 @@ def value_counts_with_proportion(series: pl.Series,
     return result.to_pandas() if convert_to_pandas else result
 
 
+# In[9]:
+
+
+def print_series(series: pl.Series, n: int = 10, unique: bool = False) -> None:
+    """
+    Print summary information and display the first `n` rows of a Polars Series.
+
+    Args:
+        series (pl.Series): The Polars Series to print and display.
+        n (int, optional): The number of rows to display from the beginning of the Series. Defaults to 10.
+        unique (bool, optional): Whether to display only unique values in the Series before selecting the first `n` rows. Defaults to False.
+
+    Returns:
+        None
+    """
+    print(f'Series Shape: {series.shape}')
+    print(f'Series Type: {series.dtype}')
+
+    final_series = series.unique() if unique else series
+
+    display(final_series.head(n=n))
+
+
 # ## Cleaning `brand`
 # - **Top categories**: The top three brands—Dell (19%), Lenovo (11%), and HP (7%)—represent a combined 37% of the total brands in the dataset. The null values account for 39% of the data, with 2596 entries marked as null. This is quite a large portion of the dataset. The top 4 categories (`null`, `Dell`, `Lenovo` & `HP`) account for 76% of the dataset.
 # - **Unknown values**: There's an abundance of brands with very low frequencies, or unknown values (like `?` or `Does not apply`).
 # - **Inconsistent formatting**: Some entries like `Dell Inc` are not captured under the main brand `Dell` due to inconsistent formatting. Similar things occur to other top brands.
 # - **Multibrand categories**: Some entries represent several brands, like `Dell / HP / Lenovo` or `Apple / LG`
 
-# In[9]:
+# In[10]:
 
 
 # Taking a look at the frequency of each brand: total count and proportion
@@ -210,7 +233,7 @@ value_counts_with_proportion(df['brand'])
 # - **Replacing Uncertain Values:** We also handle special cases where the data might have uncertain or irrelevant values (e.g., a "?" for unknown brands), replacing them with more meaningful terms like "unbranded" or "unknown."
 # 
 
-# In[10]:
+# In[11]:
 
 
 # Define a mapping to replace certain placeholder values with more meaningful labels.
@@ -244,10 +267,9 @@ df = df.with_columns(
 # By applying these steps, we ensure that any variations or inconsistencies in the brand names are correctly mapped to the top brands, improving the consistency and accuracy of our analysis.
 # 
 
-# In[11]:
+# In[12]:
 
 
-# Identify the top 5 most frequent brands in the dataset.
 top_brands = (
     df.filter(pl.col('brand_clean').ne('unknown'))
     .group_by('brand_clean')
@@ -258,12 +280,8 @@ top_brands = (
     .to_series()
 )
 
-# Create a regex pattern to match brand names followed by an underscore (_).
-is_a_top_brand_string_pattern = "|".join(re.escape(brand_name) for brand_name in top_brands + '_')
 
-
-# Function to extract the actual brand from a string.
-def fetch_first_matching_brand_from_str(string: str, brand_list: list[str] = top_brands) -> str:
+def fetch_first_matching_brand_from_str(string: str, brand_list: list[str] = None) -> str:
     """
     Extracts the first matching brand from a given string.
 
@@ -274,11 +292,19 @@ def fetch_first_matching_brand_from_str(string: str, brand_list: list[str] = top
     Returns:
         str: The first matched brand if found; otherwise, the original string.
     """
+    brand_list = brand_list or set(top_brands)
+
     for brand in brand_list:
         if brand + '_' in string:
             return brand
     return string
 
+
+# In[13]:
+
+
+# Create a regex pattern to match brand names followed by an underscore (_).
+is_a_top_brand_string_pattern = "|".join(re.escape(brand_name) for brand_name in top_brands + '_')
 
 # Apply the brand extraction function to standardize brand names.
 df = df.with_columns(
@@ -292,12 +318,16 @@ df = df.with_columns(
     .then(pl.col('brand_clean').map_elements(fetch_first_matching_brand_from_str, return_dtype=pl.Utf8))
     # Otherwise, keep the original brand name.
     .otherwise(pl.col('brand_clean'))
+    # Casting to Polars' categorical data type
+    .cast(pl.Categorical)
     # Rename the transformed column as 'brand_clean'.
     .alias('brand_clean')
 )
 
+print_series(df['brand_clean'])
 
-# In[12]:
+
+# In[14]:
 
 
 # Taking another look at the frequency of each brand: total count and proportion
@@ -305,8 +335,8 @@ value_counts_with_proportion(df['brand_clean'])
 
 
 # Observations:
-# - **More records assigned to `dell`**: `dell` has more than 20 new records. (from `1273` to `1300`). Likely due to previously fragmented brand variations (e.g., `dell_inc`, `dell_xps`) now being mapped correctly to `dell`.
-# - **Consistent top brands**: The overall ranking of top brands did not change. The counts for `acer` (150), `lg` (125), `fujitsu_siemens` (123), `samsung` (122), `microsoft` (119), and AUO (114) remained stable, indicating that these brands were either already well-represented or had fewer naming inconsistencies.
+# - **More records assigned to `dell`**: `dell` has more than 15 new records. (from `1009` to `1030`). Likely due to previously fragmented brand variations (e.g., `dell_inc`, `dell_xps`) now being mapped correctly to `dell`.
+# - **Consistent top brands**: The overall ranking of top brands did not change. The counts for `hp`, `acer`, `lg`, `fujitsu_siemens`, `samsung`, `microsoft`  and `auo` remained stable, indicating that these brands were either already well-represented or had fewer naming inconsistencies.
 
 # ## Cleaning `price`
 # 
@@ -314,7 +344,7 @@ value_counts_with_proportion(df['brand_clean'])
 # - **Inconsistent format**: The cost of a laptop might be fixed (e.g: `880`) or a range (e.g: `from 500 to 999`)
 # - **Bad typing**: `price` is currently a categorical (`String`) variable, due to commas, whitespaces and symbols. To use this data effectively for statistical models, we **MUST CONVERT** it into **NUMERICAL**, removing currency symbols and handling text-based variations like ranges.
 
-# In[13]:
+# In[15]:
 
 
 # Taking a look at the first 5 records from the `price` column, as is
@@ -334,12 +364,14 @@ df['price'].head(n=10)
 # - **Ensuring Proper Data Types:** After cleaning, we cast the extracted price values to `Float64`, making them compatible with statistical models and numerical computations.
 # 
 
-# In[14]:
+# In[16]:
 
 
 df = df.with_columns(
     # Extract the currency symbol from the price column
-    pl.col('price').str.slice(0, 1).alias('currency_clean'),
+    pl.col('price').str.slice(0, 1)
+    .cast(pl.Categorical)  # Casting the currency symbol to categorical
+    .alias('currency_clean'),
     # Removing the currency symbol, commas from the price and trimming whitespace
     pl.col('price')
     .str.slice(1)  # Removing the currency symbol
@@ -359,7 +391,7 @@ df.select(
 
 # ## Cleaning `rating` & `ratings_count`
 
-# In[15]:
+# In[17]:
 
 
 # Taking a look at the frequency of each rating: total count and proportion
@@ -371,7 +403,7 @@ value_counts_with_proportion(df['rating'])
 # - **Strong positive bias**: Ratings are overwhelmingly positive, with **5 out of 5 stars (2%)** and **4.5 out of 5 stars (2%)** making up nearly all non-null values. Only **5 instances** have ratings of **3 stars or lower**, making it difficult to assess dissatisfaction trends.
 # - **Possible numerical conversion**: The `rating` column is currently a String but can be converted into an `Int` **five_star_scale** variable for analysis.
 
-# In[16]:
+# In[18]:
 
 
 # Taking a look at the frequency of each rating count: total count and proportion
@@ -386,7 +418,7 @@ value_counts_with_proportion(df['ratings_count'])
 # 
 # In this step, we transform the `rating` variable to variable `five_star_scale_rating` ( which, as its name implies, is a numerical variable ranging from 1-5; representing the product rating on a five-star scale) as well as clean its format (replacing spaces / decimal points with underscores) and assign the result to `rating_clean`.
 
-# In[17]:
+# In[19]:
 
 
 # Define the regex pattern for extracting numeric values (including decimals)
@@ -398,6 +430,7 @@ df = df.with_columns(
     pl.col('rating')
     .str.replace_all(r' ', '_')  # Replace spaces with underscores
     .str.replace_all(r'\.', '_')  # Replace decimal point with underscore for values like 3.5
+    .cast(pl.Categorical)  # Casting to a categorical column
     .alias('rating_clean'),
     # Using the rating pattern to match numbers
     pl.when(pl.col('rating').str.contains(rating_pattern))
@@ -417,7 +450,7 @@ df = df.with_columns(
 
 # Now, we inspect our newly created `rating_clean` & `five_star_scale_rating_clean` variables, and compare them to the original `rating` variable
 
-# In[18]:
+# In[20]:
 
 
 rating_columns = ('rating', 'rating_clean', 'five_star_scale_rating_clean')
@@ -438,7 +471,7 @@ df.select(
 # 
 # The `ratings_count` column is correctly parsed as a numerical variable, but we can shrink it, as its range is very small (from `1` to `1533`), as we can see in the summary statistics below.
 
-# In[19]:
+# In[21]:
 
 
 # Summary statistics the `ratings_count` variable
@@ -447,7 +480,7 @@ df.select(
 ).describe()
 
 
-# In[20]:
+# In[22]:
 
 
 # Shrinking the datatype for the `ratings_count` column
@@ -460,7 +493,7 @@ df = df.with_columns(
 
 # Now, we can see the result of the shrinkage, which transformed the data type from `Int64` to `Int16`:
 
-# In[21]:
+# In[23]:
 
 
 ratings_count_columns = ['ratings_count', 'ratings_count_clean']
@@ -478,7 +511,7 @@ dict(ratings_count_columns_dtypes)
 # - **`condition_label`**: A categorical label which represents the condition of a laptop (e.g: `new`, `used`, `certified_refurbished`)
 # - **`condition_description`**: A description for the `condition_label` (e.g: `A brand-new, unused, unopened laptop...`)
 
-# In[22]:
+# In[24]:
 
 
 # Taking a look at the values counts for the `condition` column
@@ -489,7 +522,7 @@ value_counts_with_proportion(df['condition'])
 # - **Similar categories**: Labels `UsedAn item that has been used previously` and `Used: An item that has been used previously` seem to contain duplicate or nearly identical information but are represented differently. Similar things occur for other labels, such as `For parts or not working`. These discrepancies may need to be cleaned and consolidated into one label.
 # - **Bad formatting**: A considerable amount of labels show formatting issues (e.g., "UsedAn item...") or seem to be concatenated with additional descriptions. This would require text processing to standardize the condition labels and improve consistency.
 
-# In[23]:
+# In[25]:
 
 
 # Creating a dictionary which represents the condition labels and descriptions
@@ -553,11 +586,13 @@ def fetch_default_condition_replace_map() -> dict[str, str]:
     This item may be a floor model or store return that has been used.""",
 
         'For parts or not working': """An item that does not function as intended and is not fully operational.
-    This includes items that are defective in ways that render them difficult to use, items that require service or repair, or items missing essential components."""
+    This includes items that are defective in ways that render them difficult to use, items that require service or repair, or items missing essential components.""",
+
+        'No label': 'No description',
     }
 
 
-# In[24]:
+# In[26]:
 
 
 # Creating a function to map condition values to a condition dictionary, which represents labels (e.g: `New`) as keys and description as values (e.g: `A brand-new, unused item...`).
@@ -598,7 +633,7 @@ def map_condition(value: str, condition_dict: dict[str, str] = None) -> tuple[st
 # - **Mapping conditions**: Repeated labels with different formats, such as `UsedAn item that has been used previously` and `Used: An item that has been used previously` are mapped to a single `condition_label` (`'Used'`) which helps us achieve a better label representation by getting rid of different categories that represent the same status (`Used`, `New`, etc.).
 # 
 
-# In[25]:
+# In[27]:
 
 
 # Transforming the dataframe, creating the `condition_label` and `condition_description` variables
@@ -621,7 +656,7 @@ LazyFrame.show_graph(df_lazy_conditions)
 
 # Here we take a look at the values from our `condition` column, and their correspondent **condition labels** and **condition descriptions**.
 
-# In[26]:
+# In[28]:
 
 
 # Selecting all unique values for condition, and their soon-to-be assigned condition labels and condition descriptions
@@ -643,8 +678,34 @@ df_lazy_conditions.unique(
 # - **Standardizing format:** Replacing occurrences hyphens and whitespaces with an underscore (`_`), making the labels more consistent and clean.
 # 
 
-# In[27]:
+# In[29]:
 
+
+def list_reversed(values: Reversible) -> list:
+    """
+    Reverses the order of the elements in a reversible iterable and returns a list.
+
+    Args:
+        values (Reversible): A reversible iterable (e.g., list, tuple, dict_keys) to be reversed.
+
+    Returns:
+        list: A list containing the elements of the iterable in reversed order.
+
+    Example:
+        >>> list_reversed([1, 2, 3])
+        [3, 2, 1]
+
+        >>> list_reversed('abc')
+        ['c', 'b', 'a']
+    """
+    return list(reversed(values))
+
+
+# In[30]:
+
+
+condition_labels = [x.lower().replace(' - ', '_').replace(' ', '_') for x in fetch_default_condition_replace_map().keys()]
+condition_descriptions = fetch_default_condition_replace_map().values()
 
 # Reformatting `condition_label_clean` and `condition_description_clean`: replacing blank spaces for underscores and lowercasing
 df = df_lazy_conditions.with_columns(
@@ -652,7 +713,10 @@ df = df_lazy_conditions.with_columns(
     .str.to_lowercase()  # Converting the text to lowercase
     .str.replace_all(' - ', '_')  # Replacing hyphen and spaces between words with underscores
     .str.replace_all(' ', '_')  # Replacing spaces with underscores
-    .alias('condition_label_clean')
+    .cast(pl.Enum(list_reversed(condition_labels))) # Casting to enum data type
+    .alias('condition_label_clean'),
+    pl.col('condition_description_clean')
+    .cast(pl.Enum(list_reversed(condition_descriptions))) # Casting to enum data type
 ).collect()  # Materializing the LazyFrame into a DataFrame
 
 # Selecting all unique values for condition, and their respective reformatted condition labels (condition description is not modified, so it is omitted from this lookup)
@@ -669,7 +733,7 @@ df.unique(
 
 # Finally, we take a look at the new `condition_label` variable and its value counts:
 
-# In[28]:
+# In[31]:
 
 
 # Taking a look at the values counts for the `condition_label_clean` column
@@ -682,7 +746,7 @@ value_counts_with_proportion(df['condition_label_clean'])
 
 # ## Cleaning `seller_note`
 
-# In[29]:
+# In[32]:
 
 
 value_counts_with_proportion(series=df['seller_note'], convert_to_pandas=True)
@@ -692,7 +756,7 @@ value_counts_with_proportion(series=df['seller_note'], convert_to_pandas=True)
 # - **High cardinality**: As this variable represents notes written in natural language, by the seller, specifying any kind of details, each note is unique.
 # - **Feature engineering potential**: It might be of interest to do sentiment analysis in order to categorize this variable given its sentiment.
 
-# In[30]:
+# In[33]:
 
 
 df = df.with_columns(
@@ -716,7 +780,7 @@ df.select(
 # - **Unknown values**: There's an abundance of brands with very low frequencies, or unknown values (like `?` or `Does not apply` or `no` or `none`).
 # 
 
-# In[31]:
+# In[34]:
 
 
 # Taking a look at the values counts for the `processor` column
@@ -736,7 +800,7 @@ value_counts_with_proportion(df['processor'])
 # - **Consistent Formatting:** We ensure all processor names are in lowercase, and we remove any unnecessary spaces or punctuation that could create inconsistencies. (transforming `Intel core - 7th gen.` into `intel_core_7th_gen`).
 # - **Replacing Uncertain Values:** We also handle special cases where the data might have uncertain or irrelevant values (e.g., `?` or `no`), replacing them with more meaningful values such as `unknown` or `not_applicable`.
 
-# In[32]:
+# In[35]:
 
 
 # Define a mapping to handle various non-standard or missing values in the 'processor' column.
@@ -757,6 +821,7 @@ df = df.with_columns(
    .str.replace(',', '')  # Removing comas
    .str.strip_chars_end('.')  # Remove any trailing dots.
    .replace(processor_replace_map)  # Apply the replacement map to clean non-standard values.
+   .cast(pl.Categorical) # Cast to categorical data type
    .alias('processor_clean')
 )
 
@@ -765,7 +830,7 @@ df.select(
 ).head(n=10)
 
 
-# In[33]:
+# In[36]:
 
 
 # Taking a look at the poorly formatted `processor` values, with their correspondent values in `processor_clean`
@@ -784,7 +849,7 @@ df.select(
 
 # Finally, we inspect visually our newly created `processor_clean` variable:
 
-# In[34]:
+# In[37]:
 
 
 # Taking a look the new `processor_clean` column and its value counts
@@ -793,7 +858,7 @@ value_counts_with_proportion(df['processor_clean'])
 
 # ## Cleaning `screen_size`
 
-# In[35]:
+# In[38]:
 
 
 # Screen size value counts and their proportion
@@ -806,7 +871,7 @@ value_counts_with_proportion(df['screen_size'], convert_to_pandas=True)
 # 
 # In this way, we can perform further analysis, visualization and numerical computations on the screen size, ensuring that we no longer have to deal with mixed formats.
 
-# In[36]:
+# In[39]:
 
 
 # Define the regex pattern to extract numeric values (floating point or integer) from screen_size column
@@ -825,7 +890,7 @@ df['screen_size_inches_clean'].head(n=10)
 
 # We can now take a look at the summary statistics for the new `screen_size_inches` variable
 
-# In[37]:
+# In[40]:
 
 
 # Looking at the summary statistics for the `screen_size_inches` variable
@@ -841,7 +906,7 @@ df['screen_size_inches_clean'].describe()
 # 
 # We're interested in correcting the outliers in the `screen_size_inches` column, as the maximum value is that of a `1000` inches, which makes very little sense. We'll start by visualizing the top values from that column, to see whether we have several outliers or this is just the product of an error in the data extraction process:
 
-# In[38]:
+# In[41]:
 
 
 df['screen_size_inches_clean'].filter(
@@ -854,7 +919,7 @@ df['screen_size_inches_clean'].filter(
 # We immediately realize we have just two values of `1000` inches, which are heavily skewing the data. The rest of the distribution lies between the range of `2-18` inches, which is sensible.
 # In order to address this, we need to find where these values are originally located. Which is, the `screen_size` column:
 
-# In[39]:
+# In[42]:
 
 
 df.select('screen_size').filter(pl.col('screen_size').str.contains('1000'))
@@ -866,7 +931,7 @@ df.select('screen_size').filter(pl.col('screen_size').str.contains('1000'))
 # 
 # Hence, we replace these unreasonable values with `None` to ensure that the data used for analysis remains consistent and meaningful.
 
-# In[40]:
+# In[43]:
 
 
 # Replace rows where screen_size_inches_clean is equal to a thousand (which is incorrect data)
@@ -887,7 +952,7 @@ df['screen_size_inches_clean'].filter(
 
 # Now, we see that the maximum value for the *screen size in inches* variable make a lot more sense. We proceed to visualize its summary statistics once again:
 
-# In[41]:
+# In[44]:
 
 
 # Looking back at the summary statistics for the `screen_size_inches` variable
@@ -903,7 +968,7 @@ df['screen_size_inches_clean'].describe()
 # - Some entries represent multiple colors in a single field (e.g: `Black & Silver`).
 # - Most entries have very little frequency, appearing a single time in the entire column. These rare values might be considered noise (and grouped into a rare label category, such as `rare` or `other`) or might to be grouped into broader categories by using the color label (such as grouping `Mica Silver` and `Ice Blue` into a broader `Blue` category).
 
-# In[42]:
+# In[45]:
 
 
 # Color value counts and their proportion
@@ -921,7 +986,7 @@ value_counts_with_proportion(df['manufacturer_color'])
 # - Color contains data in spanish, as evidenced by some of its values: `borgoña` (burgundy), `blanco` (white) or `negro` (black).
 # - Some entries represent multiple colors in a single field (e.g: `Black/ Blue / Sandtone / Platinum`).
 
-# In[43]:
+# In[46]:
 
 
 # Color value counts and their proportion
@@ -938,7 +1003,7 @@ value_counts_with_proportion(df['color'])
 # - **Reducing cardinality:** The color data may contain variations or inconsistencies in how colors are labeled (e.g., `multi-color` vs. `multicolor`). We address this by grouping similar colors under consistent labels, reducing the number of unique color categories. We also map color variations (e.g, `sky blue`, `light blue`) to a single color (`blue`).
 # - **Standardizing format:** Check whether the color listed for each item matches a set of predefined valid colors. Ensures that all color data follows a consistent format.
 
-# In[44]:
+# In[47]:
 
 
 def fetch_valid_colors_list() -> list[str]:
@@ -1020,7 +1085,7 @@ def fetch_default_color_replace_map() -> dict[str, str]:
     }
 
 
-# In[45]:
+# In[48]:
 
 
 def clean_colors(color: str, valid_colors_list: list[str] = None) -> str:
@@ -1137,7 +1202,7 @@ def clean_colors_with_multicolor_and_rare_encoding(
     )
 
 
-# In[46]:
+# In[49]:
 
 
 # Prepare the color column by converting to lowercase and applying the color replacements
@@ -1151,20 +1216,17 @@ df = df.with_columns(
     clean_colors_with_multicolor_and_rare_encoding(colors=manufacturer_color_reformatted)
     .str.replace('grey',
                  'gray')  # Naturally, we need to map grey to gray (or vice versa) as it represents the same color
+    .cast(pl.Categorical) # Casting to categorical data type
     .alias('manufacturer_color_clean')
 )
 
-df.select(
-    'manufacturer_color', 'manufacturer_color_clean'
-).unique(
-    subset='manufacturer_color',
-    maintain_order=True,
-).head(10)
+# Printing the unique values for our new manufacturer color clean variable.
+print_series(df['manufacturer_color_clean'], unique=True)
 
 
 # We further inspect the original unique values of the `manufacturer_color` column, and its correspondent mapping in `manufacturer_color_clean`:
 
-# In[47]:
+# In[50]:
 
 
 # Taking a look at all the transformed color labels
@@ -1187,7 +1249,7 @@ df.select(
 # - **Reducing cardinality:** The color data may contain variations or inconsistencies in how colors are labeled (e.g., `multi-color` vs. `multicolor`). We address this by grouping similar colors under consistent labels, reducing the number of unique color categories. We also map color variations (e.g, `sky blue`, `light blue`) to a single color (`blue`).
 # - **Standardizing format:** check whether the color listed for each item matches a set of predefined valid colors. Ensures that all color data follows a consistent format.
 
-# In[48]:
+# In[51]:
 
 
 # Prepare the color column by converting to lowercase and applying the color replacements
@@ -1201,17 +1263,16 @@ df = df.with_columns(
     clean_colors_with_multicolor_and_rare_encoding(colors=color_reformatted)
     .str.replace('grey',
                  'gray')  # Naturally, we need to map grey to gray (or vice versa) as it represents the same color
+    .cast(pl.Categorical) # Casting to categorical data type
     .alias('color_clean')
 )
 
-df.select(
-    'color', 'color_clean'
-).head(n=10)
+print_series(df['color_clean'], unique=True)
 
 
 # We further inspect the original unique values of the `color` column, and its correspondent mapping in `color_clean`:
 
-# In[49]:
+# In[52]:
 
 
 # Taking a look at all the transformed color labels
@@ -1230,7 +1291,7 @@ df.select(
 
 # We can also visualize its new value counts:
 
-# In[50]:
+# In[53]:
 
 
 # Color cleaned value counts and their proportion
@@ -1255,19 +1316,19 @@ value_counts_with_proportion(df['color_clean'])
 # - **Overlapping Storage Types**: Some entries might list both `ssd_capacity` and `hard_drive_capacity`, indicating hybrid storage (both SSD and HDD). We need to ensure such cases are handled properly.
 # - **Extreme or Unusual Values**: Some listings might contain errors, such as `4GB SSD` (which is likely incorrect). Detecting and handling anomalies is essential.
 
-# In[51]:
+# In[54]:
 
 
 value_counts_with_proportion(df['ram_size'])
 
 
-# In[52]:
+# In[55]:
 
 
 value_counts_with_proportion(df['ssd_capacity'])
 
 
-# In[53]:
+# In[56]:
 
 
 value_counts_with_proportion(df['hard_drive_capacity'])
@@ -1282,7 +1343,7 @@ value_counts_with_proportion(df['hard_drive_capacity'])
 # 
 # 
 
-# In[54]:
+# In[57]:
 
 
 def find_size(split_str: str, unit_match_str: str, unit_name: str) -> Tuple[Optional[float], str]:
@@ -1379,7 +1440,7 @@ def extract_capacity_unit(capacity: str) -> str:
     return clean_size_from_str(capacity)[1]
 
 
-# In[55]:
+# In[58]:
 
 
 # Extracting the hard drive size (numerical) and its unit
@@ -1391,6 +1452,7 @@ df = df.with_columns(
     pl.col('hard_drive_capacity')
     .str.to_lowercase()
     .map_elements(function=extract_capacity_unit, return_dtype=pl.String)
+    .cast(pl.Enum(['unknown', 'megabytes', 'gigabytes', 'terabytes']))
     .alias('hard_drive_size_unit_clean')
 )
 
@@ -1401,7 +1463,7 @@ df.select(
 )
 
 
-# In[56]:
+# In[59]:
 
 
 df = df.with_columns(
@@ -1412,6 +1474,7 @@ df = df.with_columns(
     pl.col('ram_size')
     .str.to_lowercase()
     .map_elements(function=extract_capacity_unit, return_dtype=pl.String)
+    .cast(pl.Enum(['unknown', 'megabytes', 'gigabytes', 'terabytes']))
     .alias('ram_size_unit_clean')
 )
 
@@ -1422,7 +1485,7 @@ df.select(
 )
 
 
-# In[57]:
+# In[60]:
 
 
 df = df.with_columns(
@@ -1433,6 +1496,7 @@ df = df.with_columns(
     pl.col('ssd_capacity')
     .str.to_lowercase()
     .map_elements(function=extract_capacity_unit, return_dtype=pl.String)
+    .cast(pl.Enum(['unknown', 'megabytes', 'gigabytes', 'terabytes']))
     .alias('ssd_size_unit_clean')
 )
 
@@ -1447,7 +1511,7 @@ df.select(
 # 
 # The `gpu` variable represents the graphics processing unit (GPU) present in each device. This is a crucial feature for determining the performance capabilities of a device, particularly for tasks like gaming, video editing, and AI computations.
 
-# In[58]:
+# In[61]:
 
 
 value_counts_with_proportion(df['gpu'])
@@ -1460,7 +1524,7 @@ value_counts_with_proportion(df['gpu'])
 #      - "Intel HD Graphics 520" vs. "INTEL HD GRAPHICS 520" vs. "Intel(R) HD Graphics 520"
 #      - "Intel UHD Graphics 620" vs. "Carte graphique Intel UHD 620" vs. "Gr
 
-# In[59]:
+# In[62]:
 
 
 def map_gpu_type(gpu_str: str) -> str:
@@ -1508,12 +1572,13 @@ def map_gpu_type(gpu_str: str) -> str:
         return "other"
 
 
-# In[60]:
+# In[63]:
 
 
 df = df.with_columns(
     pl.col("gpu")
     .map_elements(map_gpu_type, skip_nulls=False, return_dtype=pl.Utf8)
+    .cast(pl.Categorical())
     .alias("gpu_type_clean")
 )
 
@@ -1524,7 +1589,7 @@ value_counts_with_proportion(df['gpu_type_clean'])
 # 
 # The variable `processor_speed` represents the clock speed of a computer's processor, typically measured in GHz (gigahertz). It reflects how fast the processor can perform tasks, with higher values generally indicating faster performance. However, the variable in this dataset presents several challenges that need to be addressed during data cleaning:
 
-# In[61]:
+# In[64]:
 
 
 value_counts_with_proportion(df['processor_speed'])
@@ -1535,7 +1600,7 @@ value_counts_with_proportion(df['processor_speed'])
 # - **Inconsistent Formats**: The values are recorded in various formats, e.g., `2.60 GHz`, `2.60GHz`, `2.00-3.00GHz`, `Core 2 Duo Processor`, etc. These discrepancies need to be standardized.
 # - **Irrelevant Entries**: Some entries are not processor speeds at all (e.g., `Various`, `See Title/Description`, or `Good`).
 
-# In[62]:
+# In[65]:
 
 
 # Helper function to extract the processor speed unit (GHz, MHz, or unknown)
@@ -1607,7 +1672,7 @@ def extract_processor_speed_value(processor_speed: str) -> Optional[float]:
         return None
 
 
-# In[63]:
+# In[66]:
 
 
 df = df.with_columns(
@@ -1619,17 +1684,18 @@ df = df.with_columns(
     # Extract the unit of the processor speed (GHz, MHz, or unknown)
     pl.col('processor_speed')
     .map_elements(function=extract_processor_speed_unit, skip_nulls=False, return_dtype=pl.String)  # Extract unit part
+    .cast(pl.Enum(['unknown', 'MHz', 'GHz'])) # Cast to enum data type
     .alias('processor_speed_unit_clean')
 )
 
 
-# In[64]:
+# In[67]:
 
 
 value_counts_with_proportion(df['processor_speed_clean'])
 
 
-# In[65]:
+# In[68]:
 
 
 value_counts_with_proportion(df['processor_speed_unit_clean'])
@@ -1646,7 +1712,7 @@ value_counts_with_proportion(df['processor_speed_unit_clean'])
 # 
 # Therefore, it is essential to clean this variable by *standardizing* the names, *handling missing values* & *grouping* similar types.
 
-# In[66]:
+# In[69]:
 
 
 value_counts_with_proportion(df['type'])
@@ -1658,7 +1724,7 @@ value_counts_with_proportion(df['type'])
 # - **Grouping similar types** into broader categories to ensure consistency and ease of analysis (e.g: `chromebook` and `notebooks` both get mapped to the general label `laptop`)).
 # 
 
-# In[67]:
+# In[70]:
 
 
 def map_laptop_type(type_str: str) -> str:
@@ -1715,17 +1781,18 @@ def map_laptop_type(type_str: str) -> str:
     return 'other'
 
 
-# In[68]:
+# In[71]:
 
 
 df = df.with_columns(
     pl.col('type')
     .map_elements(map_laptop_type, skip_nulls=False, return_dtype=pl.Utf8)  # Map the function to the 'Type' column
+    .cast(pl.Categorical) # Casting to categorical data type
     .alias('laptop_type_clean')  # Create the new column
 )
 
 
-# In[69]:
+# In[72]:
 
 
 value_counts_with_proportion(df['laptop_type_clean'])
@@ -1742,7 +1809,7 @@ value_counts_with_proportion(df['laptop_type_clean'])
 # The `release_year` variable represents the year when a laptop was originally released or refurbished. \
 # As this data was scraped from eBay listings, where sellers often provide information about the release year of the laptops. However, some of the values are ambiguous, indicating either refurbishment dates, invalid data, or text labels that don't correspond to specific years.
 
-# In[70]:
+# In[73]:
 
 
 value_counts_with_proportion(df['release_year'])
@@ -1752,7 +1819,7 @@ value_counts_with_proportion(df['release_year'])
 # - The `null` values make up a significant portion of the data (88%), indicating missing or unrecorded release year information.
 # - There are various non-standard values, such as `Refurbished in 2023`, `Any`, `N/a`, and even product names like `Acer Aspire V3-571G`. These values will need to be cleaned or mapped to a valid year or category.
 
-# In[71]:
+# In[74]:
 
 
 df = df.with_columns(
@@ -1763,7 +1830,7 @@ df = df.with_columns(
 )
 
 
-# In[72]:
+# In[75]:
 
 
 value_counts_with_proportion(df['release_year_clean'])
@@ -1780,7 +1847,7 @@ value_counts_with_proportion(df['release_year_clean'])
 # 
 # However, this column contains various inconsistencies, including multiple ways of representing resolutions, variations in spacing, and occasional non-resolution data (like `'See Title/Description'`). These inconsistencies can hinder analysis and require cleaning to standardize the values.
 
-# In[73]:
+# In[76]:
 
 
 value_counts_with_proportion(df['maximum_resolution'])
@@ -1793,7 +1860,7 @@ value_counts_with_proportion(df['maximum_resolution'])
 #    - `HD`, `Full HD`, and other text-based representations for resolutions.
 # - **Outlier/Irrelevant Entries**: There are several non-resolution strings like `Like New` and `See Title/Description` that will not contribute to the analysis and need to be removed or mapped to a null value.
 
-# In[74]:
+# In[77]:
 
 
 # Dictionary mapping resolution types to their corresponding width and height values
@@ -1867,7 +1934,7 @@ def try_get_resolution_value(resolution: str, resolution_dict: dict[str, list[st
     return 'unknown'
 
 
-# In[75]:
+# In[78]:
 
 
 def extract_width_from_resolution_str(resolution: str,
@@ -1912,7 +1979,7 @@ def extract_height_from_resolution_str(resolution: str,
     return try_get_resolution_value(resolution, resolution_dict, index=1)
 
 
-# In[76]:
+# In[79]:
 
 
 df = df.with_columns(
@@ -1937,13 +2004,13 @@ df = df.with_columns(
 
 # Now, we take a look at the newly created `display_heigth_clean` & `display_width_clean` variables:
 
-# In[77]:
+# In[80]:
 
 
 value_counts_with_proportion(df['display_height_clean'])
 
 
-# In[78]:
+# In[81]:
 
 
 value_counts_with_proportion(df['display_width_clean'])
@@ -1955,13 +2022,13 @@ value_counts_with_proportion(df['display_width_clean'])
 # 
 # Hence, we clean and standardize these model names to ensure consistency and meaningful analysis.
 
-# In[79]:
+# In[82]:
 
 
 value_counts_with_proportion(df['model'])
 
 
-# In[80]:
+# In[83]:
 
 
 # Cleaning and standardizing the `model` variable
@@ -1970,6 +2037,7 @@ df = df.with_columns(
     .str.to_lowercase()  # Convert the string to lowercase
     .str.replace_all(r'\s+', '_')  # Replace spaces with underscores
     .str.replace_all(r'[^a-z0-9_]', '')  # Remove non-alphanumeric characters (except underscores)
+    .cast(pl.Categorical) # Casting to categorical data type
     .alias('model_clean')  # Create a new column with the cleaned model names
 )
 
@@ -1978,6 +2046,12 @@ df.select(
 ).filter(
     pl.col('model').is_not_null()
 ).head(n=10)
+
+
+# In[84]:
+
+
+value_counts_with_proportion(df['model_clean'])
 
 
 # ## Cleaning `os`
@@ -1993,7 +2067,7 @@ df.select(
 # 
 # We now proceed to take a further look at the value counts of the `os` variable:
 
-# In[81]:
+# In[85]:
 
 
 # Operating system value counts and their proportion.
@@ -2007,7 +2081,7 @@ value_counts_with_proportion(df['os'])
 
 # We now map the `os` variable to common categories: `linux`, `windows`, `chrome`, `android`, `mac` and `other`.
 
-# In[82]:
+# In[86]:
 
 
 # Define a function that maps the OS types based on the text
@@ -2060,12 +2134,13 @@ def map_os_type(os: str) -> str:
         return 'other'
 
 
-# In[83]:
+# In[87]:
 
 
 df = df.with_columns(
     pl.col("os")  # Select the OS column
     .map_elements(map_os_type, skip_nulls=False, return_dtype=pl.Utf8)  # Apply the function using map_elements
+    .cast(pl.Enum(['unknown', 'other', 'mac', 'android', 'chrome', 'windows', 'linux'])) # Casting to enum data type
     .alias("os_clean")  # Create a new column with the mapped values
 )
 
@@ -2079,7 +2154,7 @@ value_counts_with_proportion(df['os_clean'])
 # 
 # Features such as "Wi-Fi" might appear in different forms (e.g., "Wi-Fi", "wi-fi", "WIFI"). Standardizing these variations into a single, consistent format (e.g., "wi-fi") will help in reducing redundancy and improving the quality of the dataset for analysis. If there are entries that are empty or `null`, this indicates that the device's features are not available. This could be due to incomplete data collection or missing information for certain devices.
 
-# In[84]:
+# In[88]:
 
 
 # Operating system cleaned value counts and their proportion.
@@ -2090,15 +2165,13 @@ value_counts_with_proportion(df['features'])
 # - **Inconsistent Formatting**: The entries in `features` do not follow a consistent format, which can make analysis difficult. For example, some devices might list features like "Wi-Fi, Bluetooth, USB" while others might list them as "bluetooth, wifi, usb", causing inconsistency in labeling.
 # 
 
-# In[85]:
+# In[89]:
 
 
 df = df.with_columns(
     pl.col('features')
     .str.to_lowercase()
-    # .str.replace_all(r',,{2,}', ',')  # Replaces multiple commas with a single comma
     .str.replace_all(r'\s+', '')
-    #.str.replace_all('', '_')
     .alias('features_clean')
 )
 
@@ -2107,7 +2180,7 @@ df['features_clean'].head(n=10)
 
 # Now we take a further look at the value counts for the new `features_clean` column:
 
-# In[86]:
+# In[90]:
 
 
 value_counts_with_proportion(df['features_clean'])
@@ -2119,7 +2192,7 @@ value_counts_with_proportion(df['features_clean'])
 # 
 # We'll start by taking a look at its value counts:
 
-# In[87]:
+# In[91]:
 
 
 # Country region of manufacturer value counts and their proportion.
@@ -2134,7 +2207,7 @@ value_counts_with_proportion(df['country_region_of_manufacturer'])
 # ### Reformatting `country_region_of_manufacturer`
 # We now proceed to reformat the `country_region_of_manufacturer` variable, by doing string operations (such as lowercasing, replacing all whitespaces with underscores) and assigning all `null` values to the `unknown` category.
 
-# In[88]:
+# In[92]:
 
 
 df = df.with_columns(
@@ -2142,6 +2215,7 @@ df = df.with_columns(
     .str.to_lowercase()  # Convert all text to lowercase
     .str.replace_all(r'\s+', '_')  # Replace all whitespaces with underscores
     .fill_null('unknown')  # Replace null values with 'unknown'
+    .cast(pl.Categorical) # Casting to categorical data type
     .alias('country_of_manufacturer_clean')  # Save as a new column
 )
 
@@ -2152,7 +2226,7 @@ df.select(
 )
 
 
-# In[89]:
+# In[93]:
 
 
 # Country of manufacturer cleaned value counts and their proportion.
@@ -2171,7 +2245,7 @@ value_counts_with_proportion(df['country_of_manufacturer_clean'])
 # 
 # We are cleaning this variable to standardize the labels, group similar values, and handle missing or incorrectly formatted data. This will allow for more accurate analysis and ensure the column is more usable in subsequent processes.
 
-# In[90]:
+# In[94]:
 
 
 # Storage type value counts and their proportion.
@@ -2183,7 +2257,7 @@ value_counts_with_proportion(df['storage_type'])
 # - **Multiple Formats**: The data includes various representations for similar storage types (e.g., "SSD", "SSD (Solid State Drive)", "Solid State Drive"), which could lead to inconsistencies. These variations need to be standardized and grouped for better analysis and modeling.
 # - **Uncommon and Irrelevant Entries**: There are a few outlier values such as "Touchscreen", "256GBSSD", and "SSD or SSD", which seem irrelevant to the `storage_type` category. These should be reviewed and cleaned accordingly to ensure data quality.
 
-# In[91]:
+# In[95]:
 
 
 def map_storage_type(string: str) -> str:
@@ -2238,12 +2312,13 @@ def map_storage_type(string: str) -> str:
         return 'other'
 
 
-# In[92]:
+# In[96]:
 
 
 df = df.with_columns(
     pl.col("storage_type")  # Select the storage_type column
     .map_elements(map_storage_type, skip_nulls=False, return_dtype=pl.Utf8)  # Apply the function using map_elements
+    .cast(pl.Enum(['unknown', 'other', 'emmc', 'hdd', 'ssd', 'hdd_or_ssd'])) # Casting to enum data type
     .alias("storage_type_clean")  # Create a new column with the mapped values
 )
 
@@ -2254,7 +2329,7 @@ df.select(
 
 # Now we can analyze the value counts from our new `storage_type_clean` variable, expecting a big reduction in cardinality and a standard formatting for categorical labels.
 
-# In[93]:
+# In[97]:
 
 
 # Storage type cleaned value counts and their proportion.
@@ -2269,7 +2344,7 @@ value_counts_with_proportion(df['storage_type_clean'])
 
 # ## Exporting the data
 
-# In[94]:
+# In[98]:
 
 
 clean_columns = [col for col in df.columns if col.endswith('_clean')]
@@ -2279,14 +2354,20 @@ print(clean_columns)
 
 # We have created 31 columns, from the original 23, via this data cleaning process.
 
-# In[95]:
+# In[99]:
 
 
 df_clean = df.select(clean_columns)
 df_clean.columns = [col.replace('_clean', '') for col in df_clean.columns]
 
+# Data Types
+pl.DataFrame(data={
+    'column': df_clean.columns,
+    'dtype': df_clean.dtypes
+})
 
-# In[96]:
+
+# In[100]:
 
 
 df_clean.head(n=10).to_pandas()
@@ -2294,8 +2375,8 @@ df_clean.head(n=10).to_pandas()
 
 # Now, we'll export this dataset to a csv file, named `ebay_laptops_and_notebooks_cleansed.csv`.
 
-# In[97]:
+# In[101]:
 
 
-df_clean.write_csv(file=DATA_OUTPUT_LOCATION_PATH)
+df_clean.write_parquet(file=DATA_OUTPUT_LOCATION_PATH)
 
