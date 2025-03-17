@@ -36,7 +36,7 @@
 # These libraries will work together to ensure a streamlined and efficient manner for building and optimizing our predictive modeling.
 # 
 
-# In[1]:
+# In[7]:
 
 
 # Importing libraries and setting constants
@@ -63,17 +63,19 @@ from textblob import TextBlob
 # Constants
 RANDOM_SEED = 287  # Random seed for reproducibility
 N_CORES_HALF = os.cpu_count() / 2  # Half the number of cores available
-DATA_SOURCE_PATH = '../data/processed/ebay_laptops_and_netbooks_cleansed.parquet'  # Path wherein the data is located
+CSV_DATA_SOURCE_PATH = '../data/processed/ebay_laptops_and_netbooks_cleansed.csv'  # Path wherein the CSV cleansed data is located
+PARQUET_DATA_SOURCE_PATH = '../data/processed/ebay_laptops_and_netbooks_cleansed.parquet'  # Path wherein the parquet cleansed data is located
+READ_CSV_INSTEAD_OF_PARQUET = True # Whether to read the CSV cleansed data source or not
 
 
 # ## Data Loading
 
 # We import the data set from the `DATA_SOURCE_PATH` location and check the first 5 rows.
 
-# In[2]:
+# In[8]:
 
 
-df = pl.read_parquet(DATA_SOURCE_PATH)
+df = pl.read_csv(CSV_DATA_SOURCE_PATH) if READ_CSV_INSTEAD_OF_PARQUET else pl.read_parquet(PARQUET_DATA_SOURCE_PATH)
 df.head(n=5)
 
 
@@ -101,7 +103,7 @@ df.head(n=5)
 
 # #### Data Types
 
-# In[15]:
+# In[9]:
 
 
 df_column_dtypes = pl.DataFrame(data={
@@ -111,7 +113,7 @@ df_column_dtypes = pl.DataFrame(data={
 df_column_dtypes
 
 
-# In[17]:
+# In[10]:
 
 
 (
@@ -126,7 +128,7 @@ df_column_dtypes
 # 
 # Before anything else, we check some of the summary statistics for each variable, that is, their count, average, standard deviation, etc.
 
-# In[ ]:
+# In[11]:
 
 
 df.describe()
@@ -136,7 +138,7 @@ df.describe()
 # 
 # We also take a look at the null count for each column, which --as evidenced below-- varies heavily, from the target variable `min_price` having no nulls whatsoever, to the `rating` columns having an extremely high percentage (95%!) of null values.
 
-# In[66]:
+# In[12]:
 
 
 df.null_count().unpivot(
@@ -156,7 +158,7 @@ df.null_count().unpivot(
 
 # We start by using the `describe()` method to get a summary of the `min_price` feature, which provides us with an overview of the distribution of minimum prices across the dataset.
 
-# In[67]:
+# In[13]:
 
 
 df['min_price'].describe()
@@ -169,7 +171,7 @@ df['min_price'].describe()
 
 # Following the summary statistics for `min_price`, we plot its distribution using a combination of a **histogram** and a **Kernel Density Estimate (KDE)** plot. The **histogram** shows the frequency of price ranges, while the **KDE** provides a smoothed curve to better understand the overall shape of the distribution.
 
-# In[68]:
+# In[14]:
 
 
 (
@@ -188,7 +190,7 @@ df['min_price'].describe()
 # 
 # This kind of skew is common in pricing, where most products are affordable, but a few high-end or premium items raise the overall price range.
 
-# In[69]:
+# In[15]:
 
 
 ## TODO : More EDA - AutoEDA? (SweetViz, AutoViz, pandas-profiling) or manual? TBD
@@ -221,7 +223,7 @@ df['min_price'].describe()
 
 # We start by taking a look at some of the seller notes which appear in the dataset.
 
-# In[70]:
+# In[16]:
 
 
 df.select(
@@ -233,7 +235,7 @@ df.select(
 
 # We continue by creating functions which will allow us to extract the sentiment, polarity and subjectivity from each of the notes.
 
-# In[71]:
+# In[17]:
 
 
 def get_sentiment_label_by_polarity(polarity: float, threshold: float = 0.1) -> str:
@@ -288,7 +290,7 @@ def get_sentiment_features(text: str, threshold: float = 0.1) -> Tuple[float, fl
     return polarity, subjectivity, sentiment_label
 
 
-# In[72]:
+# In[18]:
 
 
 def get_polarity(text: str, threshold: float = 0.1) -> float:
@@ -360,7 +362,7 @@ def get_sentiment_label(text: str, threshold: float = 0.1) -> str:
 
 # Now we can extract the polarity, subjectivity and the sentiment from each of the seller notes!
 
-# In[73]:
+# In[19]:
 
 
 df = df.with_columns(
@@ -381,7 +383,7 @@ df = df.with_columns(
 
 # After creating the columns with `polars`, we visualize the newly created features:
 
-# In[74]:
+# In[20]:
 
 
 df.select(
@@ -396,7 +398,7 @@ df.select(
 
 # #### **Visualization** - Seller Note Polarity
 
-# In[ ]:
+# In[21]:
 
 
 (
@@ -407,7 +409,7 @@ df.select(
 )
 
 
-# In[ ]:
+# In[22]:
 
 
 (
@@ -419,7 +421,7 @@ df.select(
 
 # #### **Visualization** - Seller Note Subjectivity
 
-# In[ ]:
+# In[23]:
 
 
 (
@@ -430,7 +432,7 @@ df.select(
 )
 
 
-# In[ ]:
+# In[24]:
 
 
 (
@@ -442,7 +444,7 @@ df.select(
 
 # #### **Visualization** - Seller Note Sentiment
 
-# In[ ]:
+# In[25]:
 
 
 (
@@ -452,7 +454,7 @@ df.select(
 )
 
 
-# In[ ]:
+# In[26]:
 
 
 sns.catplot(data=df, x='seller_note_sentiment_label', kind='box', y='min_price', hue='seller_note_sentiment_label')
@@ -465,7 +467,7 @@ sns.catplot(data=df, x='seller_note_sentiment_label', kind='box', y='min_price',
 )
 
 
-# In[ ]:
+# In[27]:
 
 
 (
@@ -476,7 +478,7 @@ sns.catplot(data=df, x='seller_note_sentiment_label', kind='box', y='min_price',
 )
 
 
-# In[ ]:
+# In[28]:
 
 
 (
@@ -490,7 +492,7 @@ sns.catplot(data=df, x='seller_note_sentiment_label', kind='box', y='min_price',
 
 # #### Standardizing hard drive, RAM & SSD size to their size in gigabytes
 
-# In[ ]:
+# In[29]:
 
 
 df.select([
@@ -499,7 +501,7 @@ df.select([
 ])
 
 
-# In[ ]:
+# In[30]:
 
 
 def convert_to_gb(df_to_convert: pl.DataFrame, size_column: str, unit_column: str):
@@ -522,7 +524,7 @@ def convert_to_gb(df_to_convert: pl.DataFrame, size_column: str, unit_column: st
     )
 
 
-# In[ ]:
+# In[31]:
 
 
 size_columns = [col for col in df.columns if col.endswith('_size')]
@@ -532,7 +534,7 @@ for size_col in size_columns:
     df = convert_to_gb(df, size_col, unit_col)
 
 
-# In[ ]:
+# In[32]:
 
 
 for size in size_columns:
@@ -543,7 +545,7 @@ for size in size_columns:
 
 # ### Feature Selection
 
-# In[ ]:
+# In[33]:
 
 
 # The target variable : the minimum price required to purchase an item (laptop/netbook)
@@ -562,7 +564,7 @@ series_target = df[target_var]
 
 # ### Categorical Features
 
-# In[ ]:
+# In[34]:
 
 
 feature_names = df_features.columns
@@ -589,7 +591,7 @@ print(f'Categorical Features: \n{cat_feature_names}')
 # 
 # [Feature-Engine]: https://github.com/feature-engine/feature_engine
 
-# In[ ]:
+# In[35]:
 
 
 # Sets the minimum count for a category to be kept separately, categories with fewer than 20 occurrences will be grouped.
@@ -623,7 +625,7 @@ for col in cat_feature_names:
 # 1. **First split**: The training set is created with 60% of the data, and the remaining 40% is kept for validation and testing.
 # 2. **Second split**: The remaining 40% of the data is divided equally into validation and test sets, resulting in 20% of the total data being used for validation and 20% for testing.
 
-# In[ ]:
+# In[36]:
 
 
 stratify_col = 'brand'
@@ -667,7 +669,7 @@ df_val, df_test, series_val, series_test = train_test_split(
 # 
 # We start by creating a data frame that will group the count and frequency of each brand according to its set.
 
-# In[ ]:
+# In[37]:
 
 
 # Add a 'subset' column for train, val, and test sets
@@ -697,7 +699,7 @@ proportion_data
 
 # We can now visualize the total brand count per each subset using a faceted bar plot:
 
-# In[ ]:
+# In[38]:
 
 
 fig = plt.figure(figsize=(10, 6))
@@ -719,7 +721,7 @@ fig.tight_layout()
 
 # We can also take a look at the brand proportion in each subset:
 
-# In[ ]:
+# In[39]:
 
 
 # Plot the normalized data (percentages)
@@ -740,7 +742,7 @@ plt.show()
 
 # Now we convert the data from Polars `DataFrames` and `Series` into NumPy `ndarray`, in order to make it compatible with machine learning libraries like `scikit-learn` or `catboost`.
 
-# In[ ]:
+# In[40]:
 
 
 X_train = df_train.to_numpy()
@@ -767,21 +769,21 @@ y_test = series_test.to_numpy()
 # <a href="https://www.researchgate.net/figure/The-flow-diagram-of-the-CatBoost-model_fig3_370695897"><i>The flow diagram of the CatBoost model</i></a>
 # </div>
 
-# In[ ]:
+# In[41]:
 
 
 train_pool = cb.Pool(data=X_train, label=y_train, cat_features=cat_feature_names, feature_names=feature_names)
 val_pool = cb.Pool(data=X_val, label=y_val, cat_features=cat_feature_names, feature_names=feature_names)
 
 
-# In[ ]:
+# In[42]:
 
 
 catboost = cb.CatBoostRegressor(loss_function='RMSE')
 catboost.fit(X=train_pool, eval_set=val_pool, logging_level='Silent')
 
 
-# In[ ]:
+# In[43]:
 
 
 catboost_feature_importance = pl.DataFrame({
@@ -804,7 +806,7 @@ catboost_feature_importance = pl.DataFrame({
 )
 
 
-# In[ ]:
+# In[44]:
 
 
 # Make predictions using the trained model on both the training and validation data
@@ -973,7 +975,7 @@ fig
 # <img src="../assets/logos/shap.png" height="200" width="200"/>
 # </div>
 
-# In[ ]:
+# In[45]:
 
 
 # Run SHAP
