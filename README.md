@@ -23,18 +23,51 @@
 </div>
 
 <!-- Here goes the project description -->
-Here goes the project description.
+This project aims to develop a **predictive model for estimating laptop prices** using a dataset sourced from eBay's
+*Laptops & Netbooks* category. 
+
+The dataset, obtained via web scraping, has been cleaned and includes key product
+attributes such as **brand, specifications, and listing details**.
 
 ## 📝 Requirements 📝
 
-Here you can give instructions on how to set up your project locally: Installation, API keys, etc.
+This project uses **Conda (Miniforge)** for managing dependencies. To set up the environment, follow these steps:
+
+### 1️⃣ Clone the Repository  
+```bash
+git clone https://github.com/jxareas/laptop-price-catboost.git
+cd laptop-price-catboost
+```
+
+### 2️⃣ Create and Activate the Conda Environment`
+```bash
+conda env create -f environment.yml
+conda activate ebay-laptops
+```
+
+3️⃣ Verify Installation
+```bash
+conda list
+```
+
+Now you're ready to explore the project's notebooks! 🚀
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## 🦾 Technologies 🦾
 
-This section should list any major frameworks/libraries used to bootstrap your project.
+This project leverages a variety of powerful libraries for **machine learning, data preprocessing, and model evaluation**:
 
+- **[CatBoost](https://catboost.ai/)** – The **core modeling library**, designed for gradient boosting with **categorical feature handling** and strong performance in regression tasks.
+- **[Scikit-learn](https://scikit-learn.org/)** – Used for **model training**, evaluation, and dataset splitting (*train, validation, and test*).
+- **[Polars](https://pola.rs/)** – A high-performance **DataFrame library**, optimized for speed and low memory usage.
+- **[Feature Engine](https://feature-engine.readthedocs.io/)** – Provides **feature engineering** techniques for transforming and selecting relevant features.
+- **[Optuna](https://optuna.org/)** – A hyperparameter optimization framework for **automated model tuning** to enhance performance.
+- **[SHAP](https://shap.readthedocs.io/)** – Powers **Explainable AI**, offering insights into **feature importance** and how they impact model predictions.
+- **[Seaborn](https://seaborn.pydata.org/)** – Used for **data visualization** and **Exploratory Data Analysis (EDA)**, leveraging the `seaborn.objects` API for a **Grammar of Graphics**-based approach.
+- **[TextBlob](https://textblob.readthedocs.io/)** – A simple yet powerful **Natural Language Processing (NLP)** library, used for **sentiment analysis** on text-based features.
+
+These tools collectively enhance our **data processing, model training, and interpretability** capabilities. 🚀
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## 📜 License 📜
